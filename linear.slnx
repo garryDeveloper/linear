@@ -1,0 +1,10 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Linear.Domain/Linear.Domain.csproj" />
+    <Project Path="src/Linear.Web/Linear.Web.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Linear.IntegrationTests/Linear.IntegrationTests.csproj" />
+    <Project Path="tests/Linear.UnitTests/Linear.UnitTests.csproj" />
+  </Folder>
+</Solution>

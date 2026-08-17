@@ -1,0 +1,12 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "linear-web",
+      "runtimeExecutable": "dotnet",
+      "runtimeArgs": ["run", "--project", "src/Linear.Web", "--launch-profile", "http"],
+      "port": 5173,
+      "url": "http://localhost:5173"
+    }
+  ]
+}

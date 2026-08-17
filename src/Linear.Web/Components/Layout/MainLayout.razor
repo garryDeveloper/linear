@@ -1,0 +1,50 @@
+@inherits LayoutComponentBase
+@implements IDisposable
+@inject ThemeState ThemeState
+
+<MudThemeProvider @ref="_themeProvider"
+                  Theme="LinearTheme.Instance"
+                  IsDarkMode="ThemeState.IsDarkMode" />
+<MudPopoverProvider />
+<MudDialogProvider />
+<MudSnackbarProvider />
+
+<MudLayout>
+    <AppHeader OnToggleSidebar="ToggleSidebar" />
+    <AppSidebar @bind-Open="_sidebarOpen" />
+
+    <MudMainContent Class="pa-4">
+        @Body
+    </MudMainContent>
+</MudLayout>
+
+<div id="blazor-error-ui" data-nosnippet>
+    Ocurrió un error inesperado.
+    <a href="." class="reload">Recargar</a>
+    <span class="dismiss">🗙</span>
+</div>
+
+@code {
+    private MudThemeProvider? _themeProvider;
+    private bool _sidebarOpen = true;
+
+    protected override void OnInitialized() => ThemeState.Changed += OnThemeChanged;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender || _themeProvider is null)
+        {
+            return;
+        }
+
+        // La preferencia del sistema solo puede leerse desde el navegador, así que
+        // recién está disponible después del primer render interactivo.
+        ThemeState.SetDarkMode(await _themeProvider.GetSystemDarkModeAsync());
+    }
+
+    private void ToggleSidebar() => _sidebarOpen = !_sidebarOpen;
+
+    private void OnThemeChanged() => InvokeAsync(StateHasChanged);
+
+    public void Dispose() => ThemeState.Changed -= OnThemeChanged;
+}

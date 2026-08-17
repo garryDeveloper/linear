@@ -1,0 +1,38 @@
+@page "/Error"
+@using System.Diagnostics
+@layout MainLayout
+
+<PageTitle>Error · Linear</PageTitle>
+
+<MudStack Spacing="3" AlignItems="AlignItems.Start">
+    <MudText Typo="Typo.h1">Ocurrió un error</MudText>
+    <MudText Typo="Typo.body2" Color="Color.Secondary">
+        No pudimos procesar la solicitud.
+    </MudText>
+
+    @if (ShowRequestId)
+    {
+        <MudText Typo="Typo.caption" Color="Color.Secondary">
+            Identificador de la solicitud: <code>@RequestId</code>
+        </MudText>
+    }
+
+    <MudButton Href="/"
+               Variant="Variant.Outlined"
+               Size="Size.Small"
+               StartIcon="@Icons.Material.Rounded.ArrowBack">
+        Volver al inicio
+    </MudButton>
+</MudStack>
+
+@code {
+    [CascadingParameter]
+    private HttpContext? HttpContext { get; set; }
+
+    private string? RequestId { get; set; }
+
+    private bool ShowRequestId => !string.IsNullOrEmpty(RequestId);
+
+    protected override void OnInitialized() =>
+        RequestId = Activity.Current?.Id ?? HttpContext?.TraceIdentifier;
+}

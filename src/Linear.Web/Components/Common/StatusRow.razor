@@ -1,0 +1,21 @@
+<MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween">
+    <MudText Typo="Typo.body2" Color="Color.Secondary">@Label</MudText>
+    <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1">
+        <MudIcon Icon="@(Healthy ? Icons.Material.Rounded.CheckCircle : Icons.Material.Rounded.Error)"
+                 Color="@(Healthy ? Color.Success : Color.Warning)"
+                 Size="Size.Small" />
+        <MudText Typo="Typo.body2">@Value</MudText>
+    </MudStack>
+</MudStack>
+
+@code {
+    [Parameter, EditorRequired]
+    public required string Label { get; set; }
+
+    [Parameter, EditorRequired]
+    public required string Value { get; set; }
+
+    /// <summary>Determina el ícono y el color con que se muestra el estado.</summary>
+    [Parameter]
+    public bool Healthy { get; set; }
+}

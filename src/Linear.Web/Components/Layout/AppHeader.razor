@@ -1,0 +1,26 @@
+@inject ThemeState ThemeState
+
+<MudAppBar Elevation="0" Dense="true" Class="border-b">
+    <MudIconButton Icon="@Icons.Material.Rounded.Menu"
+                   Size="Size.Small"
+                   Edge="Edge.Start"
+                   aria-label="Mostrar u ocultar la navegación"
+                   OnClick="OnToggleSidebar" />
+
+    <MudText Typo="Typo.h6" Class="ml-2">Linear</MudText>
+
+    <MudSpacer />
+
+    <MudTooltip Text="@(ThemeState.IsDarkMode ? "Cambiar a modo claro" : "Cambiar a modo oscuro")">
+        <MudIconButton Icon="@(ThemeState.IsDarkMode ? Icons.Material.Rounded.LightMode : Icons.Material.Rounded.DarkMode)"
+                       Size="Size.Small"
+                       aria-label="Cambiar el tema de la interfaz"
+                       OnClick="@(() => ThemeState.Toggle())" />
+    </MudTooltip>
+</MudAppBar>
+
+@code {
+    /// <summary>Se invoca cuando el usuario pide mostrar u ocultar la navegación lateral.</summary>
+    [Parameter]
+    public EventCallback OnToggleSidebar { get; set; }
+}

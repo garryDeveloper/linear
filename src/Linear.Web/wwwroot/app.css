@@ -1,0 +1,35 @@
+html, body {
+    height: 100%;
+}
+
+/* La navegación por teclado tiene que ser visible: es la base de la task 013. */
+:focus-visible {
+    outline: 2px solid var(--mud-palette-primary);
+    outline-offset: 2px;
+}
+
+h1:focus {
+    outline: none;
+}
+
+/* Barras de scroll discretas, acordes a una interfaz densa. */
+* {
+    scrollbar-width: thin;
+    scrollbar-color: var(--mud-palette-lines-default) transparent;
+}
+
+.validation-message {
+    color: var(--mud-palette-error);
+    font-size: 0.75rem;
+}
+
+.blazor-error-boundary {
+    background: var(--mud-palette-error);
+    color: var(--mud-palette-error-text);
+    padding: 0.75rem 1rem;
+    border-radius: var(--mud-default-borderradius);
+}
+
+.blazor-error-boundary::after {
+    content: "Ocurrió un error inesperado.";
+}

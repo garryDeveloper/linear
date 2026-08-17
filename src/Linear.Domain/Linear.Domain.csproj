@@ -1,0 +1,9 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Este proyecto no debe referenciar EF Core, FastEndpoints, MudBlazor ni ningún
+    driver de base de datos (.ai/architecture.md § Domain Layer).
+    La ausencia de <ItemGroup> de paquetes es intencional y el compilador la sostiene.
+  -->
+
+</Project>

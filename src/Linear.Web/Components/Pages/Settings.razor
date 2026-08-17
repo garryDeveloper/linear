@@ -1,0 +1,36 @@
+@page "/settings"
+@implements IDisposable
+@inject ThemeState ThemeState
+
+<PageTitle>Configuración · Linear</PageTitle>
+
+<MudStack Spacing="4">
+    <div>
+        <MudText Typo="Typo.h1">Configuración</MudText>
+        <MudText Typo="Typo.body2" Color="Color.Secondary">
+            Preferencias de la aplicación.
+        </MudText>
+    </div>
+
+    <MudPaper Outlined="true" Class="pa-4" Style="max-width: 520px;">
+        <MudText Typo="Typo.h4" Class="mb-3">Apariencia</MudText>
+
+        <MudSwitch T="bool"
+                   Value="ThemeState.IsDarkMode"
+                   ValueChanged="@((bool isDark) => ThemeState.SetDarkMode(isDark))"
+                   Color="Color.Primary"
+                   Label="Modo oscuro" />
+
+        <MudText Typo="Typo.caption" Color="Color.Secondary">
+            Al iniciar sesión se usa la preferencia del sistema operativo.
+        </MudText>
+    </MudPaper>
+</MudStack>
+
+@code {
+    protected override void OnInitialized() => ThemeState.Changed += OnThemeChanged;
+
+    private void OnThemeChanged() => InvokeAsync(StateHasChanged);
+
+    public void Dispose() => ThemeState.Changed -= OnThemeChanged;
+}

@@ -1,0 +1,38 @@
+<Project>
+
+  <!--
+    Central Package Management: una sola versión por paquete para toda la solución.
+    Los .csproj declaran qué paquetes usan, nunca con qué versión.
+  -->
+  <PropertyGroup>
+    <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+  </PropertyGroup>
+
+  <ItemGroup Label="UI">
+    <PackageVersion Include="MudBlazor" Version="9.8.0" />
+  </ItemGroup>
+
+  <ItemGroup Label="API">
+    <!-- FastEndpoints trae FluentValidation de forma transitiva: no se declara aparte. -->
+    <PackageVersion Include="FastEndpoints" Version="8.2.0" />
+  </ItemGroup>
+
+  <ItemGroup Label="Persistence">
+    <PackageVersion Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.3" />
+    <!--
+      La versión de las herramientas de diseño sigue a la de EF Core que trae el
+      proveedor de Npgsql. Desalinearlas produce conflictos de binding al resolver
+      referencias transitivas.
+    -->
+    <PackageVersion Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.4" />
+  </ItemGroup>
+
+  <ItemGroup Label="Testing">
+    <PackageVersion Include="Microsoft.AspNetCore.Mvc.Testing" Version="10.0.11" />
+    <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
+    <PackageVersion Include="xunit" Version="2.9.3" />
+    <PackageVersion Include="xunit.runner.visualstudio" Version="3.1.4" />
+    <PackageVersion Include="coverlet.collector" Version="6.0.4" />
+  </ItemGroup>
+
+</Project>

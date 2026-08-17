@@ -1,0 +1,17 @@
+@page "/not-found"
+@layout MainLayout
+
+<PageTitle>Página no encontrada · Linear</PageTitle>
+
+<MudStack Spacing="3" AlignItems="AlignItems.Start">
+    <MudText Typo="Typo.h1">Página no encontrada</MudText>
+    <MudText Typo="Typo.body2" Color="Color.Secondary">
+        La dirección a la que intentaste acceder no existe.
+    </MudText>
+    <MudButton Href="/"
+               Variant="Variant.Outlined"
+               Size="Size.Small"
+               StartIcon="@Icons.Material.Rounded.ArrowBack">
+        Volver al inicio
+    </MudButton>
+</MudStack>

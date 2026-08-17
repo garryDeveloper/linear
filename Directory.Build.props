@@ -1,0 +1,16 @@
+<Project>
+
+  <!--
+    Propiedades comunes a todos los proyectos de la solución.
+    El TargetFramework vive aquí para que agregar un proyecto nuevo no implique
+    volver a decidirlo.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+  </PropertyGroup>
+
+</Project>

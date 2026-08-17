@@ -1,0 +1,29 @@
+<MudDrawer Open="Open"
+           OpenChanged="OpenChanged"
+           Elevation="0"
+           Variant="@DrawerVariant.Mini"
+           OpenMiniOnHover="true"
+           ClipMode="DrawerClipMode.Always"
+           Class="border-r">
+    <MudNavMenu Dense="true" Class="pt-2">
+        <MudNavLink Href="/"
+                    Match="NavLinkMatch.All"
+                    Icon="@Icons.Material.Rounded.Home">
+            Inicio
+        </MudNavLink>
+        <MudNavLink Href="/settings"
+                    Match="NavLinkMatch.Prefix"
+                    Icon="@Icons.Material.Rounded.Settings">
+            Configuración
+        </MudNavLink>
+    </MudNavMenu>
+</MudDrawer>
+
+@code {
+    /// <summary>Indica si la navegación lateral está expandida.</summary>
+    [Parameter]
+    public bool Open { get; set; }
+
+    [Parameter]
+    public EventCallback<bool> OpenChanged { get; set; }
+}
