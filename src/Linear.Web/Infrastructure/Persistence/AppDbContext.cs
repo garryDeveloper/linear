@@ -1,5 +1,8 @@
 using System.Reflection;
 
+using Linear.Domain.Teams;
+using Linear.Domain.Users;
+
 using Microsoft.EntityFrameworkCore;
 
 namespace Linear.Web.Infrastructure.Persistence;
@@ -8,13 +11,15 @@ namespace Linear.Web.Infrastructure.Persistence;
 /// Contexto de persistencia de la aplicación.
 /// </summary>
 /// <remarks>
-/// Todavía no declara <see cref="DbSet{TEntity}"/> porque las entidades de negocio
-/// están fuera del alcance de la task 001. Las configuraciones se descubren por
-/// reflexión desde este assembly, así que cada feature podrá aportar la suya
-/// sin tocar esta clase.
+/// Las configuraciones se descubren por reflexión desde este assembly, así que cada
+/// feature aporta la suya sin tocar esta clase.
 /// </remarks>
 public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(options)
 {
+    public DbSet<User> Users => Set<User>();
+
+    public DbSet<Team> Teams => Set<Team>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         ArgumentNullException.ThrowIfNull(modelBuilder);

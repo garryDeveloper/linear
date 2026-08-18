@@ -1,0 +1,38 @@
+<MudAvatar Size="Size" Color="Color.Primary" Variant="Variant.Filled">
+    @if (!string.IsNullOrWhiteSpace(AvatarUrl))
+    {
+        <MudImage Src="@AvatarUrl" Alt="@Name" />
+    }
+    else
+    {
+        @Initials
+    }
+</MudAvatar>
+
+@code {
+    [Parameter]
+    public string? Name { get; set; }
+
+    [Parameter]
+    public string? AvatarUrl { get; set; }
+
+    [Parameter]
+    public Size Size { get; set; } = Size.Small;
+
+    /// <summary>Iniciales del usuario, como respaldo cuando no hay imagen de avatar.</summary>
+    private string Initials
+    {
+        get
+        {
+            var words = (Name ?? string.Empty)
+                .Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
+            return words.Length switch
+            {
+                0 => "?",
+                1 => words[0][..1].ToUpperInvariant(),
+                _ => string.Concat(words[0][..1], words[1][..1]).ToUpperInvariant()
+            };
+        }
+    }
+}

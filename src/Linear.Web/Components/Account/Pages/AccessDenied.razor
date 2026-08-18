@@ -1,0 +1,15 @@
+@page "/account/access-denied"
+@layout AccountLayout
+@attribute [AllowAnonymous]
+
+<PageTitle>Sin permiso · Linear</PageTitle>
+
+<MudPaper Outlined="true" Class="pa-6">
+    <MudText Typo="Typo.h3" Class="mb-1">No tenés permiso</MudText>
+    <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-5">
+        Tu cuenta no tiene acceso a esa sección.
+    </MudText>
+    <MudButton Href="/" Variant="Variant.Outlined" Size="Size.Small">
+        Volver al inicio
+    </MudButton>
+</MudPaper>

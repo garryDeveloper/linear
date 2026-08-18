@@ -17,6 +17,34 @@
                        aria-label="Cambiar el tema de la interfaz"
                        OnClick="@(() => ThemeState.Toggle())" />
     </MudTooltip>
+
+    <AuthorizeView Context="auth">
+        <Authorized>
+            <MudMenu AnchorOrigin="Origin.BottomRight"
+                     TransformOrigin="Origin.TopRight"
+                     Class="ml-2"
+                     aria-label="Menú del usuario">
+                <ActivatorContent>
+                    <UserAvatar Name="@auth.User.GetName()" AvatarUrl="@auth.User.GetAvatarUrl()" />
+                </ActivatorContent>
+                <ChildContent>
+                    <div class="px-4 py-2">
+                        <MudText Typo="Typo.body2">@auth.User.GetName()</MudText>
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">
+                            @auth.User.GetEmail()
+                        </MudText>
+                    </div>
+                    <MudDivider />
+                    <MudMenuItem Href="/account/profile" Icon="@Icons.Material.Rounded.Person">
+                        Perfil
+                    </MudMenuItem>
+                    <MudMenuItem Href="/account/logout" Icon="@Icons.Material.Rounded.Logout">
+                        Cerrar sesión
+                    </MudMenuItem>
+                </ChildContent>
+            </MudMenu>
+        </Authorized>
+    </AuthorizeView>
 </MudAppBar>
 
 @code {

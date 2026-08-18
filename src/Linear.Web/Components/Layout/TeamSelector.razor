@@ -1,0 +1,107 @@
+@implements IDisposable
+
+@using Linear.Web.Features.Teams.Contracts
+@using Linear.Web.Features.Teams.List
+
+@inject ListTeamsHandler ListTeams
+@inject NavigationManager Navigation
+
+@* Permite saltar entre equipos sin volver al listado, que es la operación más frecuente
+   una vez que alguien pertenece a más de uno. *@
+<MudMenu FullWidth="true"
+         AnchorOrigin="Origin.BottomLeft"
+         TransformOrigin="Origin.TopLeft"
+         Class="px-2 pt-2"
+         aria-label="Cambiar de equipo">
+    <ActivatorContent>
+        <MudButton FullWidth="true"
+                   Variant="Variant.Outlined"
+                   Size="Size.Small"
+                   Class="justify-space-between"
+                   EndIcon="@Icons.Material.Rounded.UnfoldMore">
+            @(_current?.Name ?? "Equipos")
+        </MudButton>
+    </ActivatorContent>
+    <ChildContent>
+        @if (_teams.Count == 0)
+        {
+            <MudMenuItem Disabled="true">Todavía no tenés equipos</MudMenuItem>
+        }
+        else
+        {
+            @foreach (var team in _teams)
+            {
+                <MudMenuItem Href="@($"/teams/{team.Key}/members")">
+                    <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                        <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined">@team.Key</MudChip>
+                        <MudText Typo="Typo.body2">@team.Name</MudText>
+                    </MudStack>
+                </MudMenuItem>
+            }
+        }
+        <MudDivider />
+        <MudMenuItem Href="/teams" Icon="@Icons.Material.Rounded.Groups">
+            Ver todos los equipos
+        </MudMenuItem>
+    </ChildContent>
+</MudMenu>
+
+@code {
+    private readonly CancellationTokenSource _cancellation = new();
+
+    private IReadOnlyList<TeamSummaryResponse> _teams = [];
+    private TeamSummaryResponse? _current;
+
+    protected override void OnInitialized() => Navigation.LocationChanged += OnLocationChanged;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            await LoadAsync();
+        }
+    }
+
+    private async Task LoadAsync()
+    {
+        // Se piden hasta el máximo permitido por página: el selector no tiene sentido
+        // paginado, y la cantidad de equipos por persona es acotada en la práctica.
+        var result = await ListTeams.HandleAsync(
+            new ListTeamsRequest { PageSize = Linear.Web.Shared.Pagination.PageRequest.MaxPageSize },
+            _cancellation.Token);
+
+        if (result.IsSuccess)
+        {
+            _teams = result.Value.Items;
+            UpdateCurrent();
+            StateHasChanged();
+        }
+    }
+
+    private void OnLocationChanged(object? sender, LocationChangedEventArgs args)
+    {
+        UpdateCurrent();
+        InvokeAsync(StateHasChanged);
+    }
+
+    /// <summary>
+    /// El equipo activo se deduce de la ruta en lugar de guardarse aparte: así un enlace
+    /// compartido siempre abre el equipo correcto.
+    /// </summary>
+    private void UpdateCurrent()
+    {
+        var path = Navigation.ToBaseRelativePath(Navigation.Uri);
+        var segments = path.Split('/', StringSplitOptions.RemoveEmptyEntries);
+
+        _current = segments is ["teams", var key, ..]
+            ? _teams.FirstOrDefault(team => string.Equals(team.Key, key, StringComparison.OrdinalIgnoreCase))
+            : null;
+    }
+
+    public void Dispose()
+    {
+        Navigation.LocationChanged -= OnLocationChanged;
+        _cancellation.Cancel();
+        _cancellation.Dispose();
+    }
+}

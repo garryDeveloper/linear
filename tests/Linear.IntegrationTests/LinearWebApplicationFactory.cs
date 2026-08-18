@@ -23,6 +23,5 @@ public sealed class LinearWebApplicationFactory : WebApplicationFactory<Program>
 
         builder.UseEnvironment("Testing");
         builder.UseSetting("ConnectionStrings:Postgres", UnreachableDatabaseConnectionString);
-        builder.UseSetting("Api:BaseAddress", "http://localhost/");
     }
 }

@@ -1,0 +1,255 @@
+@page "/teams/{Key}/members"
+@implements IDisposable
+
+@using Linear.Domain.Teams
+@using Linear.Web.Features.Teams.AddMember
+@using Linear.Web.Features.Teams.ChangeMemberRole
+@using Linear.Web.Features.Teams.Contracts
+@using Linear.Web.Features.Teams.GetByKey
+@using Linear.Web.Features.Teams.RemoveMember
+
+@inject GetTeamByKeyHandler GetTeam
+@inject AddTeamMemberHandler AddMember
+@inject RemoveTeamMemberHandler RemoveMember
+@inject ChangeTeamMemberRoleHandler ChangeRole
+@inject ISnackbar Snackbar
+
+<PageTitle>Miembros · Linear</PageTitle>
+
+<TeamPageHeader Team="_team" TeamKey="@Key" ActiveTab="members" />
+
+@if (_loading)
+{
+    <MudSkeleton Height="220px" />
+}
+else if (_error is not null)
+{
+    <MudAlert Severity="Severity.Error" Dense="true" Variant="Variant.Outlined">
+        @_error.Description
+    </MudAlert>
+}
+else if (_team is not null)
+{
+    <MudStack Spacing="4">
+        @if (CanManage)
+        {
+            <MudPaper Outlined="true" Class="pa-4">
+                <MudText Typo="Typo.h4" Class="mb-3">Agregar miembro</MudText>
+                <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Center">
+                    <MudTextField @bind-Value="_newMemberEmail"
+                                  Label="Email"
+                                  Variant="Variant.Outlined"
+                                  Margin="Margin.Dense"
+                                  Immediate="true"
+                                  HelperText="El usuario tiene que tener una cuenta creada." />
+                    <MudSelect @bind-Value="_newMemberRole"
+                               Label="Rol"
+                               Variant="Variant.Outlined"
+                               Margin="Margin.Dense"
+                               Style="min-width: 140px;">
+                        @foreach (var role in AssignableRoles)
+                        {
+                            <MudSelectItem T="TeamRole" Value="role">@TeamRoleLabel.For(role)</MudSelectItem>
+                        }
+                    </MudSelect>
+                    <MudButton Variant="Variant.Filled"
+                               Color="Color.Primary"
+                               Size="Size.Small"
+                               Disabled="_busy"
+                               OnClick="AddMemberAsync">
+                        Agregar
+                    </MudButton>
+                </MudStack>
+            </MudPaper>
+        }
+
+        <MudPaper Outlined="true">
+            <MudTable Items="_team.Members" Dense="true" Hover="true" Elevation="0">
+                <HeaderContent>
+                    <MudTh>Miembro</MudTh>
+                    <MudTh>Rol</MudTh>
+                    <MudTh>Desde</MudTh>
+                    <MudTh />
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd DataLabel="Miembro">
+                        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                            <UserAvatar Name="@context.Name" AvatarUrl="@context.AvatarUrl" />
+                            <div>
+                                <MudText Typo="Typo.body2">@context.Name</MudText>
+                                <MudText Typo="Typo.caption" Color="Color.Secondary">@context.Email</MudText>
+                            </div>
+                        </MudStack>
+                    </MudTd>
+                    <MudTd DataLabel="Rol">
+                        @if (CanChangeRoleOf(context))
+                        {
+                            <MudSelect T="TeamRole"
+                                       Value="@ParseRole(context.Role)"
+                                       ValueChanged="@(role => ChangeRoleAsync(context.UserId, role))"
+                                       Variant="Variant.Text"
+                                       Margin="Margin.Dense"
+                                       Dense="true"
+                                       Style="min-width: 120px;">
+                                @foreach (var role in AssignableRoles)
+                                {
+                                    <MudSelectItem T="TeamRole" Value="role">@TeamRoleLabel.For(role)</MudSelectItem>
+                                }
+                            </MudSelect>
+                        }
+                        else
+                        {
+                            <MudChip T="string" Size="Size.Small" Variant="Variant.Text">
+                                @TeamRoleLabel.For(context.Role)
+                            </MudChip>
+                        }
+                    </MudTd>
+                    <MudTd DataLabel="Desde">
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">
+                            @context.JoinedAt.ToLocalTime().ToString("dd/MM/yyyy")
+                        </MudText>
+                    </MudTd>
+                    <MudTd Style="text-align: right;">
+                        @if (CanRemove(context))
+                        {
+                            <MudIconButton Icon="@Icons.Material.Rounded.PersonRemove"
+                                           Size="Size.Small"
+                                           aria-label="Quitar del equipo"
+                                           Disabled="_busy"
+                                           OnClick="@(() => RemoveMemberAsync(context.UserId))" />
+                        }
+                    </MudTd>
+                </RowTemplate>
+            </MudTable>
+        </MudPaper>
+    </MudStack>
+}
+
+@code {
+    private readonly CancellationTokenSource _cancellation = new();
+
+    [Parameter]
+    public string Key { get; set; } = string.Empty;
+
+    private TeamResponse? _team;
+    private Error? _error;
+    private bool _loading = true;
+    private bool _busy;
+
+    private string _newMemberEmail = string.Empty;
+    private TeamRole _newMemberRole = TeamRole.Member;
+
+    private TeamRole CurrentRole => ParseRole(_team?.Role);
+
+    private bool CanManage => CurrentRole >= TeamRole.Admin;
+
+    /// <summary>
+    /// Un Admin no puede repartir el rol Owner, así que tampoco se le ofrece en la lista.
+    /// El handler lo rechaza igual: esto solo evita mostrar una acción condenada a fallar.
+    /// </summary>
+    private IEnumerable<TeamRole> AssignableRoles => CurrentRole == TeamRole.Owner
+        ? [TeamRole.Member, TeamRole.Admin, TeamRole.Owner]
+        : [TeamRole.Member, TeamRole.Admin];
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (_team?.Key != Key)
+        {
+            await LoadAsync();
+        }
+    }
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        _error = null;
+        StateHasChanged();
+
+        var result = await GetTeam.HandleAsync(Key, _cancellation.Token);
+
+        if (result.IsSuccess)
+        {
+            _team = result.Value;
+        }
+        else
+        {
+            _error = result.Error;
+        }
+
+        _loading = false;
+        StateHasChanged();
+    }
+
+    private Task AddMemberAsync() =>
+        RunAsync(
+            () => AddMember.HandleAsync(
+                new AddTeamMemberRequest
+                {
+                    Key = Key,
+                    Email = _newMemberEmail,
+                    Role = _newMemberRole
+                },
+                _cancellation.Token),
+            onSuccess: () =>
+            {
+                _newMemberEmail = string.Empty;
+                _newMemberRole = TeamRole.Member;
+                Snackbar.Add("Miembro agregado.", Severity.Success);
+            });
+
+    private Task RemoveMemberAsync(Guid userId) =>
+        RunAsync(
+            () => RemoveMember.HandleAsync(
+                new RemoveTeamMemberRequest { Key = Key, UserId = userId },
+                _cancellation.Token),
+            onSuccess: () => Snackbar.Add("Miembro quitado.", Severity.Success));
+
+    private Task ChangeRoleAsync(Guid userId, TeamRole role) =>
+        RunAsync(
+            () => ChangeRole.HandleAsync(
+                new ChangeTeamMemberRoleRequest { Key = Key, UserId = userId, Role = role },
+                _cancellation.Token),
+            onSuccess: () => Snackbar.Add("Rol actualizado.", Severity.Success));
+
+    private async Task RunAsync(Func<Task<Result<TeamResponse>>> operation, Action onSuccess)
+    {
+        _busy = true;
+        StateHasChanged();
+
+        var result = await operation();
+
+        _busy = false;
+
+        if (result.IsFailure)
+        {
+            Snackbar.Add(result.Error.Description, Severity.Error);
+            StateHasChanged();
+            return;
+        }
+
+        _team = result.Value;
+        onSuccess();
+        StateHasChanged();
+    }
+
+    private bool CanChangeRoleOf(TeamMemberResponse member)
+    {
+        if (!CanManage)
+        {
+            return false;
+        }
+
+        return ParseRole(member.Role) != TeamRole.Owner || CurrentRole == TeamRole.Owner;
+    }
+
+    private bool CanRemove(TeamMemberResponse member) => CanChangeRoleOf(member);
+
+    private static TeamRole ParseRole(string? role) =>
+        Enum.TryParse<TeamRole>(role, out var parsed) ? parsed : TeamRole.Member;
+
+    public void Dispose()
+    {
+        _cancellation.Cancel();
+        _cancellation.Dispose();
+    }
+}

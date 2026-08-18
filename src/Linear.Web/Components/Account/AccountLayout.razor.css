@@ -1,0 +1,13 @@
+.account-shell {
+    align-items: center;
+    background-color: var(--mud-palette-background);
+    display: flex;
+    justify-content: center;
+    min-height: 100vh;
+    padding: 1.5rem;
+}
+
+.account-card {
+    max-width: 380px;
+    width: 100%;
+}

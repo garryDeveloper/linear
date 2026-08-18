@@ -49,13 +49,16 @@ public class HealthEndpointTests(LinearWebApplicationFactory factory)
     }
 
     [Fact]
-    public async Task AnUnknownApiRoute_RespondsNotFoundWithoutHtml()
+    public async Task WithoutASession_AnUnknownApiRouteRespondsUnauthorized()
     {
         using var client = factory.CreateClient();
 
         using var response = await client.GetAsync("/api/does-not-exist", CancellationToken.None);
 
-        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+        // La política de respaldo también alcanza a los requests que no coinciden con
+        // ningún endpoint, así que sin sesión el 401 llega antes que el 404. Es la
+        // respuesta deseable: no revela qué rutas existen.
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
         Assert.NotEqual("text/html", response.Content.Headers.ContentType?.MediaType);
     }
 }

@@ -1,0 +1,60 @@
+@page "/account/profile"
+
+<PageTitle>Perfil · Linear</PageTitle>
+
+<MudStack Spacing="4">
+    <div>
+        <MudText Typo="Typo.h1">Perfil</MudText>
+        <MudText Typo="Typo.body2" Color="Color.Secondary">
+            Datos de tu cuenta.
+        </MudText>
+    </div>
+
+    <AuthorizeView>
+        <Authorized>
+            <MudPaper Outlined="true" Class="pa-4" Style="max-width: 520px;">
+                <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="3" Class="mb-4">
+                    <UserAvatar Name="@context.User.GetName()"
+                                AvatarUrl="@context.User.GetAvatarUrl()"
+                                Size="Size.Large" />
+                    <div>
+                        <MudText Typo="Typo.h4">@context.User.GetName()</MudText>
+                        <MudText Typo="Typo.body2" Color="Color.Secondary">
+                            @context.User.GetEmail()
+                        </MudText>
+                    </div>
+                </MudStack>
+
+                <MudDivider Class="mb-3" />
+
+                <MudStack Spacing="2">
+                    <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+                        <MudText Typo="Typo.body2" Color="Color.Secondary">Rol</MudText>
+                        <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined"
+                                 Color="@(context.User.GetRole() == UserRole.Admin ? Color.Primary : Color.Default)">
+                            @RoleLabel(context.User.GetRole())
+                        </MudChip>
+                    </MudStack>
+                </MudStack>
+
+                <MudDivider Class="my-3" />
+
+                <MudButton Href="/account/logout"
+                           Variant="Variant.Outlined"
+                           Size="Size.Small"
+                           StartIcon="@Icons.Material.Rounded.Logout">
+                    Cerrar sesión
+                </MudButton>
+            </MudPaper>
+        </Authorized>
+    </AuthorizeView>
+</MudStack>
+
+@code {
+    private static string RoleLabel(UserRole? role) => role switch
+    {
+        UserRole.Admin => "Administrador",
+        UserRole.Member => "Miembro",
+        _ => "Desconocido"
+    };
+}

@@ -1,0 +1,45 @@
+@page "/account/logout"
+@layout AccountLayout
+@attribute [ExcludeFromInteractiveRouting]
+
+@using Microsoft.AspNetCore.Authentication
+@using Microsoft.AspNetCore.Authentication.Cookies
+
+@inject NavigationManager Navigation
+
+<PageTitle>Cerrar sesión · Linear</PageTitle>
+
+<MudPaper Outlined="true" Class="pa-6">
+    <MudText Typo="Typo.h3" Class="mb-1">Cerrar sesión</MudText>
+    <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-5">
+        ¿Querés cerrar la sesión de <strong>@(HttpContext.User.GetName())</strong>?
+    </MudText>
+
+    @* El cierre de sesión se hace por POST: un GET podría dispararse desde una imagen o un
+       enlace de un tercero y desconectar al usuario sin que lo pidiera. *@
+    <EditForm Model="this" FormName="logout" OnValidSubmit="LogOutAsync" method="post">
+        <MudStack Row="true" Spacing="2">
+            <MudButton ButtonType="ButtonType.Submit"
+                       Variant="Variant.Filled"
+                       Color="Color.Primary"
+                       Size="Size.Small">
+                Cerrar sesión
+            </MudButton>
+            <MudButton Href="/" Variant="Variant.Text" Size="Size.Small">
+                Cancelar
+            </MudButton>
+        </MudStack>
+    </EditForm>
+</MudPaper>
+
+@code {
+    [CascadingParameter]
+    private HttpContext HttpContext { get; set; } = default!;
+
+    private async Task LogOutAsync()
+    {
+        await HttpContext.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
+
+        Navigation.NavigateTo("/account/login");
+    }
+}

@@ -1,0 +1,172 @@
+@page "/teams"
+@implements IDisposable
+
+@using Linear.Web.Features.Teams.Contracts
+@using Linear.Web.Features.Teams.List
+@using Linear.Web.Shared.Pagination
+
+@inject ListTeamsHandler ListTeams
+@inject IDialogService DialogService
+@inject NavigationManager Navigation
+
+<PageTitle>Equipos · Linear</PageTitle>
+
+<MudStack Spacing="4">
+    <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+        <div>
+            <MudText Typo="Typo.h1">Equipos</MudText>
+            <MudText Typo="Typo.body2" Color="Color.Secondary">
+                Los equipos a los que pertenecés.
+            </MudText>
+        </div>
+        <MudButton Variant="Variant.Filled"
+                   Color="Color.Primary"
+                   Size="Size.Small"
+                   StartIcon="@Icons.Material.Rounded.Add"
+                   OnClick="CreateTeamAsync">
+            Nuevo equipo
+        </MudButton>
+    </MudStack>
+
+    @if (_loading)
+    {
+        <MudStack Spacing="2">
+            <MudSkeleton Height="56px" />
+            <MudSkeleton Height="56px" />
+        </MudStack>
+    }
+    else if (_error is not null)
+    {
+        <MudAlert Severity="Severity.Error" Dense="true" Variant="Variant.Outlined">
+            @_error.Description
+        </MudAlert>
+    }
+    else if (_teams is null || _teams.Items.Count == 0)
+    {
+        <MudPaper Outlined="true" Class="pa-8">
+            <MudStack AlignItems="AlignItems.Center" Spacing="2">
+                <MudIcon Icon="@Icons.Material.Rounded.Groups" Size="Size.Large" Color="Color.Secondary" />
+                <MudText Typo="Typo.h4">Todavía no tenés equipos</MudText>
+                <MudText Typo="Typo.body2" Color="Color.Secondary" Align="Align.Center">
+                    Creá el primero para empezar a organizar el trabajo.
+                </MudText>
+                <MudButton Variant="Variant.Filled"
+                           Color="Color.Primary"
+                           Size="Size.Small"
+                           StartIcon="@Icons.Material.Rounded.Add"
+                           OnClick="CreateTeamAsync">
+                    Crear equipo
+                </MudButton>
+            </MudStack>
+        </MudPaper>
+    }
+    else
+    {
+        <MudPaper Outlined="true">
+            <MudList T="string" Dense="true">
+                @foreach (var team in _teams.Items)
+                {
+                    <MudListItem T="string" OnClick="@(() => OpenTeam(team.Key))">
+                        <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween">
+                            <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="3">
+                                <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined" Color="Color.Primary">
+                                    @team.Key
+                                </MudChip>
+                                <div>
+                                    <MudText Typo="Typo.body1">@team.Name</MudText>
+                                    @if (!string.IsNullOrWhiteSpace(team.Description))
+                                    {
+                                        <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                            @team.Description
+                                        </MudText>
+                                    }
+                                </div>
+                            </MudStack>
+                            <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="3">
+                                <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                    @team.MemberCount @(team.MemberCount == 1 ? "miembro" : "miembros")
+                                </MudText>
+                                <MudChip T="string" Size="Size.Small" Variant="Variant.Text">
+                                    @TeamRoleLabel.For(team.Role)
+                                </MudChip>
+                            </MudStack>
+                        </MudStack>
+                    </MudListItem>
+                }
+            </MudList>
+        </MudPaper>
+
+        @if (_teams.TotalPages > 1)
+        {
+            <MudPagination Count="_teams.TotalPages"
+                           Selected="_page"
+                           SelectedChanged="GoToPageAsync"
+                           Size="Size.Small" />
+        }
+    }
+</MudStack>
+
+@code {
+    private readonly CancellationTokenSource _cancellation = new();
+
+    private PagedResult<TeamSummaryResponse>? _teams;
+    private Error? _error;
+    private bool _loading = true;
+    private int _page = 1;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            await LoadAsync();
+        }
+    }
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        _error = null;
+        StateHasChanged();
+
+        var result = await ListTeams.HandleAsync(
+            new ListTeamsRequest { Page = _page },
+            _cancellation.Token);
+
+        if (result.IsSuccess)
+        {
+            _teams = result.Value;
+        }
+        else
+        {
+            _error = result.Error;
+        }
+
+        _loading = false;
+        StateHasChanged();
+    }
+
+    private async Task GoToPageAsync(int page)
+    {
+        _page = page;
+        await LoadAsync();
+    }
+
+    private void OpenTeam(string key) => Navigation.NavigateTo($"/teams/{key}/members");
+
+    private async Task CreateTeamAsync()
+    {
+        var dialog = await DialogService.ShowAsync<CreateTeamDialog>("Nuevo equipo");
+        var result = await dialog.Result;
+
+        if (result is { Canceled: false, Data: string key })
+        {
+            Navigation.NavigateTo($"/teams/{key}/members");
+        }
+    }
+
+    public void Dispose()
+    {
+        _cancellation.Cancel();
+        _cancellation.Dispose();
+    }
+}

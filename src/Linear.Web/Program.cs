@@ -3,8 +3,9 @@ using FastEndpoints;
 using Linear.Web.Components;
 using Linear.Web.Components.Theming;
 using Linear.Web.Features;
+using Linear.Web.Infrastructure.Authentication;
+using Linear.Web.Infrastructure.Authorization;
 using Linear.Web.Infrastructure.Persistence;
-using Linear.Web.Shared.Http;
 
 using MudBlazor.Services;
 
@@ -24,10 +25,15 @@ builder.Services.AddFastEndpoints(options =>
     options.Assemblies = [typeof(FeaturesServiceCollectionExtensions).Assembly];
 });
 builder.Services.AddFeatureHandlers();
-builder.Services.AddInternalApiClient(builder.Configuration);
 
 // Persistencia
 builder.Services.AddPersistence(builder.Configuration, builder.Environment);
+builder.Services.Configure<SeedOptions>(builder.Configuration.GetSection(SeedOptions.SectionName));
+builder.Services.AddScoped<DatabaseSeeder>();
+
+// Autenticación y autorización
+builder.Services.AddAppAuthentication(builder.Environment, builder.Configuration);
+builder.Services.AddScoped<ITeamAccess, TeamAccess>();
 
 var app = builder.Build();
 
@@ -45,6 +51,9 @@ app.UseWhen(
 
 app.UseHttpsRedirection();
 
+app.UseAuthentication();
+app.UseAuthorization();
+
 app.UseAntiforgery();
 
 app.UseFastEndpoints(config =>
@@ -52,11 +61,39 @@ app.UseFastEndpoints(config =>
     config.Endpoints.RoutePrefix = "api";
 });
 
-app.MapStaticAssets();
+// Los recursos estáticos se sirven a cualquiera: la página de login necesita sus hojas de
+// estilo y su script antes de que exista una sesión, y la política de respaldo exige
+// autenticación en todo endpoint que no diga lo contrario.
+app.MapStaticAssets()
+    .AllowAnonymous();
+
 app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode();
 
-app.Run();
+await SeedDatabaseAsync(app);
+
+await app.RunAsync();
+
+static async Task SeedDatabaseAsync(WebApplication app)
+{
+    using var scope = app.Services.CreateScope();
+
+    var seeder = scope.ServiceProvider.GetRequiredService<DatabaseSeeder>();
+    var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
+
+    try
+    {
+        await seeder.SeedAsync(CancellationToken.None);
+    }
+    catch (Exception exception)
+    {
+        // Que falle la siembra no debe impedir que la aplicación arranque: sin base
+        // disponible, la página de inicio tiene que poder informar el problema.
+        logger.LogError(
+            exception,
+            "No se pudieron sembrar los datos iniciales. ¿Ejecutaste 'dotnet ef database update'?");
+    }
+}
 
 /// <summary>
 /// Declarada explícitamente para que los tests de integración puedan referenciarla

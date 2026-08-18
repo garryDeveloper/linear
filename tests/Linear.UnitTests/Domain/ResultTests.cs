@@ -68,4 +68,35 @@ public class ResultTests
 
         Assert.Equal(errorType, error.Type);
     }
+
+    [Fact]
+    public void Then_RunsTheNextValidationWhenTheCurrentOnePassed()
+    {
+        var executed = false;
+
+        var result = Result.Success().Then(() =>
+        {
+            executed = true;
+            return Result.Success();
+        });
+
+        Assert.True(executed);
+        Assert.True(result.IsSuccess);
+    }
+
+    [Fact]
+    public void Then_SkipsTheNextValidationAndKeepsTheFirstError()
+    {
+        var first = Error.Validation("First.Error", "Primero.");
+        var executed = false;
+
+        var result = Result.Failure(first).Then(() =>
+        {
+            executed = true;
+            return Result.Failure(Error.Validation("Second.Error", "Segundo."));
+        });
+
+        Assert.False(executed);
+        Assert.Equal(first, result.Error);
+    }
 }

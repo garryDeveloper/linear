@@ -1,3 +1,5 @@
+@using Microsoft.AspNetCore.Components.Endpoints
+
 <!DOCTYPE html>
 <html lang="es">
 
@@ -10,14 +12,32 @@
     <link rel="stylesheet" href="@Assets["app.css"]" />
     <link rel="stylesheet" href="@Assets["Linear.Web.styles.css"]" />
     <ImportMap />
-    <HeadOutlet @rendermode="InteractiveServer" />
+    <HeadOutlet @rendermode="PageRenderMode" />
 </head>
 
 <body>
-    <Routes @rendermode="InteractiveServer" />
+    <Routes @rendermode="PageRenderMode" />
     <ReconnectModal />
     <script src="@Assets["_framework/blazor.web.js"]"></script>
     <script src="_content/MudBlazor/MudBlazor.min.js"></script>
 </body>
 
 </html>
+
+@code {
+    [CascadingParameter]
+    private HttpContext HttpContext { get; set; } = default!;
+
+    /// <summary>
+    /// La aplicación es interactiva salvo en las páginas marcadas con
+    /// <see cref="ExcludeFromInteractiveRoutingAttribute"/>.
+    /// </summary>
+    /// <remarks>
+    /// Iniciar y cerrar sesión requiere escribir una cookie, y eso solo puede hacerse
+    /// mientras existe un <c>HttpContext</c> cuya respuesta todavía no empezó: dentro de un
+    /// circuito interactivo ya no lo hay. Esas páginas se renderizan del lado del servidor
+    /// de forma estática y envían un formulario HTML común.
+    /// </remarks>
+    private IComponentRenderMode? PageRenderMode =>
+        HttpContext.AcceptsInteractiveRouting() ? InteractiveServer : null;
+}

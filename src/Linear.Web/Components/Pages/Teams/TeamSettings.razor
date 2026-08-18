@@ -1,0 +1,214 @@
+@page "/teams/{Key}/settings"
+@implements IDisposable
+
+@using Linear.Domain.Teams
+@using Linear.Web.Features.Teams.Contracts
+@using Linear.Web.Features.Teams.Delete
+@using Linear.Web.Features.Teams.GetByKey
+@using Linear.Web.Features.Teams.Update
+
+@inject GetTeamByKeyHandler GetTeam
+@inject UpdateTeamHandler UpdateTeam
+@inject DeleteTeamHandler DeleteTeam
+@inject IDialogService DialogService
+@inject ISnackbar Snackbar
+@inject NavigationManager Navigation
+
+<PageTitle>Configuración del equipo · Linear</PageTitle>
+
+<TeamPageHeader Team="_team" TeamKey="@Key" ActiveTab="settings" />
+
+@if (_loading)
+{
+    <MudSkeleton Height="220px" />
+}
+else if (_error is not null)
+{
+    <MudAlert Severity="Severity.Error" Dense="true" Variant="Variant.Outlined">
+        @_error.Description
+    </MudAlert>
+}
+else if (_team is not null)
+{
+    <MudStack Spacing="4" Style="max-width: 560px;">
+        <MudPaper Outlined="true" Class="pa-4">
+            <MudText Typo="Typo.h4" Class="mb-3">General</MudText>
+
+            <MudStack Spacing="3">
+                <MudTextField @bind-Value="_name"
+                              Label="Nombre"
+                              Variant="Variant.Outlined"
+                              Margin="Margin.Dense"
+                              Immediate="true"
+                              MaxLength="@Team.MaxNameLength"
+                              Disabled="!CanEdit" />
+
+                <MudTextField Value="@_team.Key"
+                              Label="Clave"
+                              Variant="Variant.Outlined"
+                              Margin="Margin.Dense"
+                              ReadOnly="true"
+                              Disabled="true"
+                              HelperText="La clave no se puede cambiar: forma parte del identificador de cada issue." />
+
+                <MudTextField @bind-Value="_description"
+                              Label="Descripción"
+                              Variant="Variant.Outlined"
+                              Margin="Margin.Dense"
+                              Lines="3"
+                              MaxLength="@Team.MaxDescriptionLength"
+                              Disabled="!CanEdit" />
+
+                @if (CanEdit)
+                {
+                    <div>
+                        <MudButton Variant="Variant.Filled"
+                                   Color="Color.Primary"
+                                   Size="Size.Small"
+                                   Disabled="_busy"
+                                   OnClick="SaveAsync">
+                            Guardar cambios
+                        </MudButton>
+                    </div>
+                }
+                else
+                {
+                    <MudAlert Severity="Severity.Info" Dense="true" Variant="Variant.Outlined">
+                        Tu rol en el equipo no permite modificar esta configuración.
+                    </MudAlert>
+                }
+            </MudStack>
+        </MudPaper>
+
+        @if (CanDelete)
+        {
+            <MudPaper Outlined="true" Class="pa-4">
+                <MudText Typo="Typo.h4" Class="mb-1">Eliminar equipo</MudText>
+                <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-3">
+                    Se elimina el equipo junto con sus miembros. No se puede deshacer.
+                </MudText>
+                <MudButton Variant="Variant.Outlined"
+                           Color="Color.Error"
+                           Size="Size.Small"
+                           Disabled="_busy"
+                           StartIcon="@Icons.Material.Rounded.DeleteOutline"
+                           OnClick="DeleteAsync">
+                    Eliminar equipo
+                </MudButton>
+            </MudPaper>
+        }
+    </MudStack>
+}
+
+@code {
+    private readonly CancellationTokenSource _cancellation = new();
+
+    [Parameter]
+    public string Key { get; set; } = string.Empty;
+
+    private TeamResponse? _team;
+    private Error? _error;
+    private bool _loading = true;
+    private bool _busy;
+
+    private string _name = string.Empty;
+    private string? _description;
+
+    private TeamRole CurrentRole =>
+        Enum.TryParse<TeamRole>(_team?.Role, out var parsed) ? parsed : TeamRole.Member;
+
+    private bool CanEdit => CurrentRole >= TeamRole.Admin;
+
+    private bool CanDelete => CurrentRole == TeamRole.Owner;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (_team?.Key != Key)
+        {
+            await LoadAsync();
+        }
+    }
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        _error = null;
+        StateHasChanged();
+
+        var result = await GetTeam.HandleAsync(Key, _cancellation.Token);
+
+        if (result.IsSuccess)
+        {
+            _team = result.Value;
+            _name = _team.Name;
+            _description = _team.Description;
+        }
+        else
+        {
+            _error = result.Error;
+        }
+
+        _loading = false;
+        StateHasChanged();
+    }
+
+    private async Task SaveAsync()
+    {
+        _busy = true;
+        StateHasChanged();
+
+        var result = await UpdateTeam.HandleAsync(
+            new UpdateTeamRequest { Key = Key, Name = _name, Description = _description },
+            _cancellation.Token);
+
+        _busy = false;
+
+        if (result.IsFailure)
+        {
+            Snackbar.Add(result.Error.Description, Severity.Error);
+            StateHasChanged();
+            return;
+        }
+
+        _team = result.Value;
+        Snackbar.Add("Equipo actualizado.", Severity.Success);
+        StateHasChanged();
+    }
+
+    private async Task DeleteAsync()
+    {
+        var confirmed = await DialogService.ShowMessageBoxAsync(
+            "Eliminar equipo",
+            $"Se va a eliminar «{_team!.Name}» y toda su información. Esta acción no se puede deshacer.",
+            yesText: "Eliminar",
+            cancelText: "Cancelar");
+
+        if (confirmed != true)
+        {
+            return;
+        }
+
+        _busy = true;
+        StateHasChanged();
+
+        var result = await DeleteTeam.HandleAsync(Key, _cancellation.Token);
+
+        _busy = false;
+
+        if (result.IsFailure)
+        {
+            Snackbar.Add(result.Error.Description, Severity.Error);
+            StateHasChanged();
+            return;
+        }
+
+        Snackbar.Add("Equipo eliminado.", Severity.Success);
+        Navigation.NavigateTo("/teams");
+    }
+
+    public void Dispose()
+    {
+        _cancellation.Cancel();
+        _cancellation.Dispose();
+    }
+}

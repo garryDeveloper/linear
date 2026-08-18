@@ -1,7 +1,7 @@
 @page "/"
 @using Linear.Web.Features.Diagnostics.Health
 @implements IDisposable
-@inject ApiClient ApiClient
+@inject HealthHandler Health
 
 <PageTitle>Inicio · Linear</PageTitle>
 
@@ -67,9 +67,8 @@
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        // La consulta se hace recién en el render interactivo: durante el prerender el
-        // servidor todavía está resolviendo este mismo request y llamarse a sí mismo
-        // por HTTP consumiría una conexión extra sin ningún beneficio.
+        // Se consulta recién en el render interactivo: durante el prerender el resultado
+        // se descartaría al establecerse el circuito y la consulta se haría dos veces.
         if (firstRender)
         {
             await LoadAsync();
@@ -82,7 +81,7 @@
         _error = null;
         StateHasChanged();
 
-        var result = await ApiClient.GetAsync<HealthResponse>("api/health", _cancellation.Token);
+        var result = await Health.HandleAsync(_cancellation.Token);
 
         if (result.IsSuccess)
         {

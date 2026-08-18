@@ -1,0 +1,12 @@
+@inherits LayoutComponentBase
+
+@* Layout mínimo para las páginas de sesión: sin barra ni navegación, porque todavía no
+   hay un usuario a quien mostrárselas. Se renderiza de forma estática, así que el modo
+   oscuro queda fijo: leer la preferencia del sistema operativo requiere JavaScript. *@
+<MudThemeProvider Theme="LinearTheme.Instance" IsDarkMode="true" />
+
+<div class="account-shell">
+    <div class="account-card">
+        @Body
+    </div>
+</div>

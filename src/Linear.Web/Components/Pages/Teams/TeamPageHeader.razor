@@ -1,0 +1,47 @@
+@using Linear.Web.Features.Teams.Contracts
+
+@* Encabezado común a las pantallas de un equipo: identidad del equipo y navegación
+   entre sus secciones. Se muestra también mientras el equipo carga, para que la
+   página no salte cuando llegan los datos. *@
+<MudStack Spacing="1" Class="mb-4">
+    <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+        <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined" Color="Color.Primary">
+            @(Team?.Key ?? TeamKey)
+        </MudChip>
+        <MudText Typo="Typo.h1">@(Team?.Name ?? "Equipo")</MudText>
+    </MudStack>
+
+    @if (!string.IsNullOrWhiteSpace(Team?.Description))
+    {
+        <MudText Typo="Typo.body2" Color="Color.Secondary">@Team.Description</MudText>
+    }
+
+    <MudStack Row="true" Spacing="1" Class="mt-2">
+        <MudButton Href="@($"/teams/{TeamKey}/members")"
+                   Size="Size.Small"
+                   Variant="@(ActiveTab == "members" ? Variant.Filled : Variant.Text)"
+                   Color="@(ActiveTab == "members" ? Color.Primary : Color.Default)"
+                   StartIcon="@Icons.Material.Rounded.Group">
+            Miembros
+        </MudButton>
+        <MudButton Href="@($"/teams/{TeamKey}/settings")"
+                   Size="Size.Small"
+                   Variant="@(ActiveTab == "settings" ? Variant.Filled : Variant.Text)"
+                   Color="@(ActiveTab == "settings" ? Color.Primary : Color.Default)"
+                   StartIcon="@Icons.Material.Rounded.Settings">
+            Configuración
+        </MudButton>
+    </MudStack>
+</MudStack>
+
+@code {
+    [Parameter]
+    public TeamResponse? Team { get; set; }
+
+    /// <summary>Clave del equipo tomada de la ruta, disponible antes de que cargue.</summary>
+    [Parameter]
+    public string TeamKey { get; set; } = string.Empty;
+
+    [Parameter]
+    public string ActiveTab { get; set; } = string.Empty;
+}

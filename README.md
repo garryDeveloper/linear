@@ -50,6 +50,42 @@ dotnet dev-certs https --trust
 
 Con el perfil `http` no hace falta.
 
+
+## Acceso
+
+La aplicación exige sesión iniciada: toda ruta que no diga explícitamente lo contrario
+queda detrás de la política de autenticación.
+
+En desarrollo se siembra una cuenta administradora la primera vez que arranca con la base
+vacía. Las credenciales salen de `appsettings.Development.json`:
+
+```text
+admin@linear.local
+Linear-Dev-1234
+```
+
+La siembra está desactivada por omisión (`Seed:Enabled`) y nunca se ejecuta en producción.
+Todavía no hay alta de usuarios desde la interfaz: llega con la administración de equipos.
+
+
+## Equipos
+
+Todo el trabajo se organiza por equipos. Quien crea un equipo queda como su Owner, y el
+equipo conserva siempre al menos uno.
+
+| Rol | Puede |
+| --- | --- |
+| Owner | Todo lo de Admin, más eliminar el equipo y asignar o quitar el rol Owner. |
+| Admin | Editar el equipo y administrar sus miembros (sin tocar a los Owner). |
+| Member | Usar el equipo. |
+
+La clave del equipo (`WEB`, `CORE`) no se puede cambiar después de creado: forma parte del
+identificador de cada issue. Los miembros se suman por email y tienen que tener una cuenta
+creada; no hay invitaciones por correo.
+
+Un usuario que no pertenece a un equipo recibe la misma respuesta que si el equipo no
+existiera, para que no sea posible averiguar qué equipos hay en la instalación.
+
 ## Estructura
 
 ```text
@@ -58,8 +94,8 @@ src/
 └── Linear.Web/
     ├── Components/    UI Blazor: layout, páginas y tema.
     ├── Features/      Vertical slices: una carpeta por operación.
-    ├── Infrastructure/EF Core, DbContext y migraciones.
-    └── Shared/        Paginación, mapeo de errores a HTTP y cliente del API interno.
+    ├── Infrastructure/EF Core, autenticación y autorización por equipo.
+    └── Shared/        Paginación y mapeo de errores a HTTP.
 
 tests/
 ├── Linear.UnitTests/        Dominio y primitivas compartidas.
@@ -76,6 +112,16 @@ dotnet build
 dotnet test
 ```
 
+
+Los tests de integración de autenticación corren contra PostgreSQL real, sobre una base
+`linear_tests` que se recrea en cada ejecución. Necesitan el contenedor levantado:
+
+```bash
+docker compose up -d
+```
+
+Se puede apuntar a otra instancia con la variable de entorno `LINEAR_TEST_POSTGRES`.
+
 Crear una migración nueva:
 
 ```bash
@@ -87,4 +133,5 @@ dotnet ef migrations add NombreDeLaMigracion --project src/Linear.Web --output-d
 | Ajuste | Descripción |
 | --- | --- |
 | `ConnectionStrings:Postgres` | Conexión a PostgreSQL. En producción, `ConnectionStrings__Postgres`. |
-| `Api:BaseAddress` | Dirección base del API interno. Vacía: se resuelve desde las direcciones de Kestrel. Obligatoria detrás de un proxy inverso. |
+| `Authentication:RequireHttps` | Exige que la cookie de sesión viaje solo por HTTPS. Por omisión, activo fuera de desarrollo. |
+| `Seed:Enabled` | Crea la cuenta administradora inicial si no hay usuarios. Nunca se ejecuta en producción. |

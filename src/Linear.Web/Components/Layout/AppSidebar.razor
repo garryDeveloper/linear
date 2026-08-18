@@ -1,18 +1,24 @@
 <MudDrawer Open="Open"
            OpenChanged="OpenChanged"
            Elevation="0"
-           Variant="@DrawerVariant.Mini"
-           OpenMiniOnHover="true"
+           Variant="@DrawerVariant.Persistent"
            ClipMode="DrawerClipMode.Always"
            Class="border-r">
+    <TeamSelector />
+
     <MudNavMenu Dense="true" Class="pt-2">
         <MudNavLink Href="/"
                     Match="NavLinkMatch.All"
                     Icon="@Icons.Material.Rounded.Home">
             Inicio
         </MudNavLink>
-        <MudNavLink Href="/settings"
+        <MudNavLink Href="/teams"
                     Match="NavLinkMatch.Prefix"
+                    Icon="@Icons.Material.Rounded.Groups">
+            Equipos
+        </MudNavLink>
+        <MudNavLink Href="/settings"
+                    Match="NavLinkMatch.All"
                     Icon="@Icons.Material.Rounded.Settings">
             Configuración
         </MudNavLink>

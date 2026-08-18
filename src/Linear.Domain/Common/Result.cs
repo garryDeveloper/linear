@@ -32,6 +32,18 @@ public class Result
 
     public Error Error { get; }
 
+    /// <summary>
+    /// Encadena una validación: si este resultado ya falló, devuelve el error original sin
+    /// ejecutar la siguiente. Permite escribir una secuencia de reglas sin anidar ifs y
+    /// conservando el primer error, que es el más específico.
+    /// </summary>
+    public Result Then(Func<Result> next)
+    {
+        ArgumentNullException.ThrowIfNull(next);
+
+        return IsFailure ? this : next();
+    }
+
     public static Result Success() => new(true, Error.None);
 
     public static Result Failure(Error error) => new(false, error);

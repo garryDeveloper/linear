@@ -1,0 +1,93 @@
+@using System.ComponentModel.DataAnnotations
+@using Linear.Domain.Teams
+@using Linear.Web.Features.Teams.Create
+
+@inject CreateTeamHandler CreateTeam
+
+<MudDialog>
+    <DialogContent>
+        <MudStack Spacing="3">
+            @if (_error is not null)
+            {
+                <MudAlert Severity="Severity.Error" Dense="true" Variant="Variant.Outlined">
+                    @_error.Description
+                </MudAlert>
+            }
+
+            <MudTextField @bind-Value="_name"
+                          Label="Nombre"
+                          Variant="Variant.Outlined"
+                          Margin="Margin.Dense"
+                          Immediate="true"
+                          MaxLength="@Team.MaxNameLength"
+                          Required="true" />
+
+            <MudTextField @bind-Value="_key"
+                          Label="Clave"
+                          Variant="Variant.Outlined"
+                          Margin="Margin.Dense"
+                          Immediate="true"
+                          MaxLength="@TeamKey.MaxLength"
+                          HelperText="Identifica a los issues del equipo: WEB-1, CORE-2. No se puede cambiar después."
+                          Required="true" />
+
+            <MudTextField @bind-Value="_description"
+                          Label="Descripción"
+                          Variant="Variant.Outlined"
+                          Margin="Margin.Dense"
+                          Lines="3"
+                          MaxLength="@Team.MaxDescriptionLength" />
+        </MudStack>
+    </DialogContent>
+    <DialogActions>
+        <MudButton Size="Size.Small" OnClick="Cancel">Cancelar</MudButton>
+        <MudButton Size="Size.Small"
+                   Variant="Variant.Filled"
+                   Color="Color.Primary"
+                   Disabled="_saving"
+                   OnClick="SubmitAsync">
+            Crear equipo
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter]
+    private IMudDialogInstance Dialog { get; set; } = default!;
+
+    private string _name = string.Empty;
+    private string _key = string.Empty;
+    private string? _description;
+    private Error? _error;
+    private bool _saving;
+
+    /// <summary>
+    /// Sugiere una clave a partir del nombre mientras el usuario no haya escrito una propia.
+    /// </summary>
+    private async Task SubmitAsync()
+    {
+        _saving = true;
+        _error = null;
+
+        var result = await CreateTeam.HandleAsync(
+            new CreateTeamRequest
+            {
+                Name = _name,
+                Key = _key,
+                Description = _description
+            },
+            CancellationToken.None);
+
+        _saving = false;
+
+        if (result.IsFailure)
+        {
+            _error = result.Error;
+            return;
+        }
+
+        Dialog.Close(DialogResult.Ok(result.Value.Key));
+    }
+
+    private void Cancel() => Dialog.Cancel();
+}
