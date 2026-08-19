@@ -5,6 +5,8 @@ using Linear.Web.Infrastructure.Authentication;
 using Linear.Web.Infrastructure.Authorization;
 using Linear.Web.Infrastructure.Persistence;
 
+using Microsoft.EntityFrameworkCore;
+
 namespace Linear.Web.Features.Teams.RemoveMember;
 
 /// <summary>
@@ -13,12 +15,14 @@ namespace Linear.Web.Features.Teams.RemoveMember;
 public sealed class RemoveTeamMemberHandler(
     ITeamAccess teamAccess,
     ICurrentUser currentUser,
-    AppDbContext dbContext)
+    IDbContextFactory<AppDbContext> dbContextFactory)
 {
     public async Task<Result<TeamResponse>> HandleAsync(
         RemoveTeamMemberRequest request,
         CancellationToken cancellationToken)
     {
+        await using var dbContext = await dbContextFactory.CreateDbContextAsync(cancellationToken);
+
         ArgumentNullException.ThrowIfNull(request);
 
         var teamKey = TeamKeyRoute.Parse(request.Key);
@@ -29,6 +33,7 @@ public sealed class RemoveTeamMemberHandler(
         }
 
         var team = await teamAccess.RequireRoleAsync(
+            dbContext,
             teamKey.Value,
             TeamRole.Admin,
             tracking: true,

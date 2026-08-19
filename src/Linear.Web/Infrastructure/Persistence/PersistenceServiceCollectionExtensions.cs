@@ -10,8 +10,15 @@ public static class PersistenceServiceCollectionExtensions
     /// Registra el acceso a PostgreSQL.
     /// </summary>
     /// <remarks>
-    /// Falta de connection string es un error de despliegue, no una condición de negocio:
-    /// se falla al arrancar en lugar de descubrirlo en el primer request.
+    /// Se expone una fábrica y no un <see cref="AppDbContext"/> compartido porque en Blazor
+    /// Server el ámbito de inyección es el circuito completo, que dura toda la sesión del
+    /// usuario. Un contexto por circuito significa que dos componentes que cargan datos a la
+    /// vez usan la misma instancia —EF Core lo rechaza— y que el rastreador de cambios crece
+    /// sin límite mientras la pestaña siga abierta. Cada operación crea el suyo y lo descarta.
+    /// <para>
+    /// El registro scoped adicional cubre el código que sí vive dentro de un request HTTP,
+    /// donde el ámbito coincide con la operación.
+    /// </para>
     /// </remarks>
     public static IServiceCollection AddPersistence(
         this IServiceCollection services,
@@ -32,7 +39,7 @@ public static class PersistenceServiceCollectionExtensions
                 $"'ConnectionStrings__{ConnectionStringName}'.");
         }
 
-        services.AddDbContext<AppDbContext>(options =>
+        services.AddDbContextFactory<AppDbContext>(options =>
         {
             options.UseNpgsql(connectionString, npgsql => npgsql
                 .MigrationsAssembly(typeof(AppDbContext).Assembly.FullName));
@@ -43,6 +50,10 @@ public static class PersistenceServiceCollectionExtensions
                 options.EnableSensitiveDataLogging();
             }
         });
+
+        services.AddScoped(provider => provider
+            .GetRequiredService<IDbContextFactory<AppDbContext>>()
+            .CreateDbContext());
 
         return services;
     }

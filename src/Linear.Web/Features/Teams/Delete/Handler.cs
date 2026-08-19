@@ -4,6 +4,8 @@ using Linear.Web.Features.Teams.Contracts;
 using Linear.Web.Infrastructure.Authorization;
 using Linear.Web.Infrastructure.Persistence;
 
+using Microsoft.EntityFrameworkCore;
+
 namespace Linear.Web.Features.Teams.Delete;
 
 /// <summary>
@@ -13,10 +15,14 @@ namespace Linear.Web.Features.Teams.Delete;
 /// Reservado al Owner: arrastra en cascada a los miembros y, más adelante, a los issues,
 /// labels y sprints del equipo.
 /// </remarks>
-public sealed class DeleteTeamHandler(ITeamAccess teamAccess, AppDbContext dbContext)
+public sealed class DeleteTeamHandler(
+    ITeamAccess teamAccess,
+    IDbContextFactory<AppDbContext> dbContextFactory)
 {
     public async Task<Result> HandleAsync(string? key, CancellationToken cancellationToken)
     {
+        await using var dbContext = await dbContextFactory.CreateDbContextAsync(cancellationToken);
+
         var teamKey = TeamKeyRoute.Parse(key);
 
         if (teamKey.IsFailure)
@@ -25,6 +31,7 @@ public sealed class DeleteTeamHandler(ITeamAccess teamAccess, AppDbContext dbCon
         }
 
         var team = await teamAccess.RequireRoleAsync(
+            dbContext,
             teamKey.Value,
             TeamRole.Owner,
             tracking: true,

@@ -86,6 +86,44 @@ creada; no hay invitaciones por correo.
 Un usuario que no pertenece a un equipo recibe la misma respuesta que si el equipo no
 existiera, para que no sea posible averiguar qué equipos hay en la instalación.
 
+
+## Datos de ejemplo
+
+Hay un seeder que carga usuarios y equipos para poder recorrer la aplicación con contenido
+en lugar de pantallas vacías. Se ejecuta al arrancar, activándolo por línea de comandos:
+
+```bash
+dotnet run --project src/Linear.Web -- --Seed:SampleData=true
+```
+
+También puede dejarse encendido cambiando `Seed:SampleData` a `true` en
+`appsettings.Development.json`, o mediante la variable de entorno `Seed__SampleData=true`.
+
+Es idempotente: volver a ejecutarlo no duplica nada y completa lo que falte. Nunca corre
+en producción.
+
+### Qué carga
+
+Cinco cuentas, todas con la contraseña de `Seed:SamplePassword` (`Linear-Dev-1234`):
+
+| Cuenta | Nombre | Estado |
+| --- | --- | --- |
+| `ana.perez@linear.dev` | Ana Pérez | Activa |
+| `bruno.gimenez@linear.dev` | Bruno Giménez | Activa |
+| `carla.rossi@linear.dev` | Carla Rossi | Activa (Admin de la instalación) |
+| `diego.molina@linear.dev` | Diego Molina | Activa |
+| `elena.vargas@linear.dev` | Elena Vargas | **Desactivada**, a propósito |
+
+Y tres equipos. El reparto de roles está pensado para que la cuenta administradora quede
+como Owner de uno, Admin de otro y Member del tercero, y así se puedan ver los tres niveles
+de permiso sin cambiar de sesión:
+
+| Equipo | Owner | Rol de `admin@linear.local` |
+| --- | --- | --- |
+| `WEB` — Web | Ana Pérez | Admin |
+| `CORE` — Core Platform | admin | Owner |
+| `MOBILE` — Mobile | Carla Rossi | Member |
+
 ## Estructura
 
 ```text
@@ -135,3 +173,4 @@ dotnet ef migrations add NombreDeLaMigracion --project src/Linear.Web --output-d
 | `ConnectionStrings:Postgres` | Conexión a PostgreSQL. En producción, `ConnectionStrings__Postgres`. |
 | `Authentication:RequireHttps` | Exige que la cookie de sesión viaje solo por HTTPS. Por omisión, activo fuera de desarrollo. |
 | `Seed:Enabled` | Crea la cuenta administradora inicial si no hay usuarios. Nunca se ejecuta en producción. |
+| `Seed:SampleData` | Carga usuarios y equipos de ejemplo. Idempotente. Nunca se ejecuta en producción. |

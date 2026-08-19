@@ -7,14 +7,16 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Linear.Web.Infrastructure.Authorization;
 
-public sealed class TeamAccess(AppDbContext dbContext, ICurrentUser currentUser) : ITeamAccess
+public sealed class TeamAccess(ICurrentUser currentUser) : ITeamAccess
 {
     public Task<Result<Team>> RequireRoleAsync(
+        AppDbContext dbContext,
         Guid teamId,
         TeamRole minimumRole,
         bool tracking,
         CancellationToken cancellationToken) =>
         EvaluateAsync(
+            dbContext,
             query => query.FirstOrDefaultAsync(team => team.Id == teamId, cancellationToken),
             () => TeamErrors.NotFound(teamId),
             minimumRole,
@@ -22,6 +24,7 @@ public sealed class TeamAccess(AppDbContext dbContext, ICurrentUser currentUser)
             cancellationToken);
 
     public Task<Result<Team>> RequireRoleAsync(
+        AppDbContext dbContext,
         TeamKey key,
         TeamRole minimumRole,
         bool tracking,
@@ -30,6 +33,7 @@ public sealed class TeamAccess(AppDbContext dbContext, ICurrentUser currentUser)
         ArgumentNullException.ThrowIfNull(key);
 
         return EvaluateAsync(
+            dbContext,
             query => query.FirstOrDefaultAsync(team => team.Key == key, cancellationToken),
             () => TeamErrors.NotFoundByKey(key.Value),
             minimumRole,
@@ -38,12 +42,15 @@ public sealed class TeamAccess(AppDbContext dbContext, ICurrentUser currentUser)
     }
 
     private async Task<Result<Team>> EvaluateAsync(
+        AppDbContext dbContext,
         Func<IQueryable<Team>, Task<Team?>> find,
         Func<Error> notFound,
         TeamRole minimumRole,
         bool tracking,
         CancellationToken cancellationToken)
     {
+        ArgumentNullException.ThrowIfNull(dbContext);
+
         var userId = await currentUser.RequireIdAsync(cancellationToken);
 
         if (userId.IsFailure)

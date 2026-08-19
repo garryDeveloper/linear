@@ -5,6 +5,8 @@ using Linear.Web.Infrastructure.Authentication;
 using Linear.Web.Infrastructure.Authorization;
 using Linear.Web.Infrastructure.Persistence;
 
+using Microsoft.EntityFrameworkCore;
+
 namespace Linear.Web.Features.Teams.GetByKey;
 
 /// <summary>
@@ -13,10 +15,12 @@ namespace Linear.Web.Features.Teams.GetByKey;
 public sealed class GetTeamByKeyHandler(
     ITeamAccess teamAccess,
     ICurrentUser currentUser,
-    AppDbContext dbContext)
+    IDbContextFactory<AppDbContext> dbContextFactory)
 {
     public async Task<Result<TeamResponse>> HandleAsync(string? key, CancellationToken cancellationToken)
     {
+        await using var dbContext = await dbContextFactory.CreateDbContextAsync(cancellationToken);
+
         var teamKey = TeamKeyRoute.Parse(key);
 
         if (teamKey.IsFailure)
@@ -25,6 +29,7 @@ public sealed class GetTeamByKeyHandler(
         }
 
         var team = await teamAccess.RequireRoleAsync(
+            dbContext,
             teamKey.Value,
             TeamRole.Member,
             tracking: false,

@@ -1,5 +1,6 @@
 using Linear.Domain.Common;
 using Linear.Domain.Teams;
+using Linear.Web.Infrastructure.Persistence;
 
 namespace Linear.Web.Infrastructure.Authorization;
 
@@ -19,18 +20,24 @@ public interface ITeamAccess
     /// Devuelve el equipo con sus miembros si el usuario en curso tiene al menos
     /// <paramref name="minimumRole"/>.
     /// </summary>
+    /// <param name="dbContext">
+    /// Contexto de la operación. Lo aporta quien llama para que la entidad devuelta quede
+    /// rastreada por el mismo contexto que después va a guardar los cambios.
+    /// </param>
     /// <param name="tracking">
     /// Desactivarlo para operaciones de solo lectura; las que modifican el agregado lo
     /// necesitan activo.
     /// </param>
     Task<Result<Team>> RequireRoleAsync(
+        AppDbContext dbContext,
         Guid teamId,
         TeamRole minimumRole,
         bool tracking,
         CancellationToken cancellationToken);
 
-    /// <inheritdoc cref="RequireRoleAsync(Guid, TeamRole, bool, CancellationToken)"/>
+    /// <inheritdoc cref="RequireRoleAsync(AppDbContext, Guid, TeamRole, bool, CancellationToken)"/>
     Task<Result<Team>> RequireRoleAsync(
+        AppDbContext dbContext,
         TeamKey key,
         TeamRole minimumRole,
         bool tracking,

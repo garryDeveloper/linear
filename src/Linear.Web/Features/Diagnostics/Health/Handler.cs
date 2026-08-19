@@ -1,6 +1,8 @@
 using Linear.Domain.Common;
 using Linear.Web.Infrastructure.Persistence;
 
+using Microsoft.EntityFrameworkCore;
+
 namespace Linear.Web.Features.Diagnostics.Health;
 
 /// <summary>
@@ -12,7 +14,7 @@ namespace Linear.Web.Features.Diagnostics.Health;
 /// dejaría al diagnóstico sin información.
 /// </remarks>
 public sealed class HealthHandler(
-    AppDbContext dbContext,
+    IDbContextFactory<AppDbContext> dbContextFactory,
     IHostEnvironment environment,
     ILogger<HealthHandler> logger)
 {
@@ -33,6 +35,8 @@ public sealed class HealthHandler(
     {
         try
         {
+            await using var dbContext = await dbContextFactory.CreateDbContextAsync(cancellationToken);
+
             return await dbContext.CanConnectAsync(cancellationToken);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)

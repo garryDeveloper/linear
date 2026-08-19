@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 using FastEndpoints;
 
 using Linear.Web.Components;
@@ -30,6 +32,7 @@ builder.Services.AddFeatureHandlers();
 builder.Services.AddPersistence(builder.Configuration, builder.Environment);
 builder.Services.Configure<SeedOptions>(builder.Configuration.GetSection(SeedOptions.SectionName));
 builder.Services.AddScoped<DatabaseSeeder>();
+builder.Services.AddScoped<SampleDataSeeder>();
 
 // Autenticación y autorización
 builder.Services.AddAppAuthentication(builder.Environment, builder.Configuration);
@@ -59,6 +62,11 @@ app.UseAntiforgery();
 app.UseFastEndpoints(config =>
 {
     config.Endpoints.RoutePrefix = "api";
+
+    // Los enums viajan por su nombre en las dos direcciones. Las respuestas ya exponen
+    // los roles como texto ("Owner", "Admin"), así que aceptarlos solo como número
+    // dejaría un contrato asimétrico y frágil ante cualquier reordenamiento del enum.
+    config.Serializer.Options.Converters.Add(new JsonStringEnumConverter());
 });
 
 // Los recursos estáticos se sirven a cualquiera: la página de login necesita sus hojas de
@@ -78,12 +86,16 @@ static async Task SeedDatabaseAsync(WebApplication app)
 {
     using var scope = app.Services.CreateScope();
 
-    var seeder = scope.ServiceProvider.GetRequiredService<DatabaseSeeder>();
+    var adminSeeder = scope.ServiceProvider.GetRequiredService<DatabaseSeeder>();
+    var sampleSeeder = scope.ServiceProvider.GetRequiredService<SampleDataSeeder>();
     var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
 
     try
     {
-        await seeder.SeedAsync(CancellationToken.None);
+        // El orden importa: los equipos de ejemplo incorporan la cuenta administradora,
+        // así que esta tiene que existir antes.
+        await adminSeeder.SeedAsync(CancellationToken.None);
+        await sampleSeeder.SeedAsync(CancellationToken.None);
     }
     catch (Exception exception)
     {

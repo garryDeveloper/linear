@@ -14,7 +14,7 @@ namespace Linear.Web.Features.Teams.Create;
 /// Crea un equipo y deja a quien lo creó como su Owner.
 /// </summary>
 public sealed class CreateTeamHandler(
-    AppDbContext dbContext,
+    IDbContextFactory<AppDbContext> dbContextFactory,
     ICurrentUser currentUser,
     ILogger<CreateTeamHandler> logger)
 {
@@ -25,6 +25,8 @@ public sealed class CreateTeamHandler(
         CreateTeamRequest request,
         CancellationToken cancellationToken)
     {
+        await using var dbContext = await dbContextFactory.CreateDbContextAsync(cancellationToken);
+
         ArgumentNullException.ThrowIfNull(request);
 
         var userId = await currentUser.RequireIdAsync(cancellationToken);

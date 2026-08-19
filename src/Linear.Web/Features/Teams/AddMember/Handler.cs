@@ -16,12 +16,14 @@ namespace Linear.Web.Features.Teams.AddMember;
 public sealed class AddTeamMemberHandler(
     ITeamAccess teamAccess,
     ICurrentUser currentUser,
-    AppDbContext dbContext)
+    IDbContextFactory<AppDbContext> dbContextFactory)
 {
     public async Task<Result<TeamResponse>> HandleAsync(
         AddTeamMemberRequest request,
         CancellationToken cancellationToken)
     {
+        await using var dbContext = await dbContextFactory.CreateDbContextAsync(cancellationToken);
+
         ArgumentNullException.ThrowIfNull(request);
 
         var teamKey = TeamKeyRoute.Parse(request.Key);
@@ -39,6 +41,7 @@ public sealed class AddTeamMemberHandler(
         }
 
         var team = await teamAccess.RequireRoleAsync(
+            dbContext,
             teamKey.Value,
             TeamRole.Admin,
             tracking: true,

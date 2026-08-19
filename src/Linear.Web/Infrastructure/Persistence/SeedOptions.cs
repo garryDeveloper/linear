@@ -1,11 +1,14 @@
 namespace Linear.Web.Infrastructure.Persistence;
 
 /// <summary>
-/// Datos iniciales para poder entrar a la aplicación en un entorno recién instalado.
+/// Datos que se siembran al arrancar.
 /// </summary>
 /// <remarks>
-/// La task 002 no incluye alta de usuarios ni invitaciones, así que sin una cuenta
-/// sembrada no habría forma de iniciar sesión.
+/// Son dos cosas distintas con interruptores separados. <see cref="Enabled"/> crea la
+/// cuenta administradora: sin ella no habría forma de iniciar sesión en una instalación
+/// nueva, porque todavía no existe el alta de usuarios. <see cref="SampleData"/> agrega
+/// un juego de datos de ejemplo para poder recorrer la aplicación con contenido; eso no
+/// hace falta para operar, solo para desarrollar y demostrar.
 /// </remarks>
 public sealed class SeedOptions
 {
@@ -19,4 +22,16 @@ public sealed class SeedOptions
     public string AdminName { get; set; } = string.Empty;
 
     public string AdminPassword { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Crea usuarios y equipos de ejemplo.
+    /// </summary>
+    /// <remarks>
+    /// Es independiente de <see cref="Enabled"/>: se puede pedir solo el juego de ejemplo
+    /// sobre una base que ya tiene cuentas reales, y al revés.
+    /// </remarks>
+    public bool SampleData { get; set; }
+
+    /// <summary>Contraseña común a todas las cuentas de ejemplo.</summary>
+    public string SamplePassword { get; set; } = string.Empty;
 }

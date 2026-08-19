@@ -7,10 +7,12 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Linear.Web.Features.Authentication.GetCurrentUser;
 
-public sealed class GetCurrentUserHandler(AppDbContext dbContext, ICurrentUser currentUser)
+public sealed class GetCurrentUserHandler(IDbContextFactory<AppDbContext> dbContextFactory, ICurrentUser currentUser)
 {
     public async Task<Result<CurrentUserResponse>> HandleAsync(CancellationToken cancellationToken)
     {
+        await using var dbContext = await dbContextFactory.CreateDbContextAsync(cancellationToken);
+
         var userId = await currentUser.RequireIdAsync(cancellationToken);
 
         if (userId.IsFailure)

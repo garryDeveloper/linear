@@ -16,7 +16,7 @@ namespace Linear.Web.Features.Authentication.Login;
 /// <c>HttpContext</c> cuya respuesta no empezó a escribirse.
 /// </remarks>
 public sealed class LoginHandler(
-    AppDbContext dbContext,
+    IDbContextFactory<AppDbContext> dbContextFactory,
     IPasswordHasher passwordHasher,
     ILogger<LoginHandler> logger)
 {
@@ -25,6 +25,8 @@ public sealed class LoginHandler(
         string? password,
         CancellationToken cancellationToken)
     {
+        await using var dbContext = await dbContextFactory.CreateDbContextAsync(cancellationToken);
+
         var normalizedEmail = Email.Create(email);
 
         if (normalizedEmail.IsFailure)

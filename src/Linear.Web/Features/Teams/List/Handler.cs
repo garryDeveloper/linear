@@ -15,12 +15,14 @@ namespace Linear.Web.Features.Teams.List;
 /// No necesita comprobar permisos: el filtro por pertenencia es la propia autorización.
 /// Un usuario nunca ve un equipo del que no es miembro.
 /// </remarks>
-public sealed class ListTeamsHandler(AppDbContext dbContext, ICurrentUser currentUser)
+public sealed class ListTeamsHandler(IDbContextFactory<AppDbContext> dbContextFactory, ICurrentUser currentUser)
 {
     public async Task<Result<PagedResult<TeamSummaryResponse>>> HandleAsync(
         ListTeamsRequest request,
         CancellationToken cancellationToken)
     {
+        await using var dbContext = await dbContextFactory.CreateDbContextAsync(cancellationToken);
+
         ArgumentNullException.ThrowIfNull(request);
 
         var userId = await currentUser.RequireIdAsync(cancellationToken);

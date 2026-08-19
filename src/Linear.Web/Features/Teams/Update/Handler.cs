@@ -5,6 +5,8 @@ using Linear.Web.Infrastructure.Authentication;
 using Linear.Web.Infrastructure.Authorization;
 using Linear.Web.Infrastructure.Persistence;
 
+using Microsoft.EntityFrameworkCore;
+
 namespace Linear.Web.Features.Teams.Update;
 
 /// <summary>
@@ -16,12 +18,14 @@ namespace Linear.Web.Features.Teams.Update;
 public sealed class UpdateTeamHandler(
     ITeamAccess teamAccess,
     ICurrentUser currentUser,
-    AppDbContext dbContext)
+    IDbContextFactory<AppDbContext> dbContextFactory)
 {
     public async Task<Result<TeamResponse>> HandleAsync(
         UpdateTeamRequest request,
         CancellationToken cancellationToken)
     {
+        await using var dbContext = await dbContextFactory.CreateDbContextAsync(cancellationToken);
+
         ArgumentNullException.ThrowIfNull(request);
 
         var teamKey = TeamKeyRoute.Parse(request.Key);
@@ -32,6 +36,7 @@ public sealed class UpdateTeamHandler(
         }
 
         var team = await teamAccess.RequireRoleAsync(
+            dbContext,
             teamKey.Value,
             TeamRole.Admin,
             tracking: true,
