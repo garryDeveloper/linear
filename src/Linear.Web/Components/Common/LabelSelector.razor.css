@@ -1,0 +1,12 @@
+.label-selector {
+    align-items: center;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+}
+
+.label-selector-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.25rem;
+}

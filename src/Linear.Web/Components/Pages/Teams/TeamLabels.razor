@@ -1,0 +1,238 @@
+@page "/teams/{Key}/labels"
+@implements IDisposable
+
+@using Linear.Domain.Teams
+@using Linear.Web.Features.Labels.Contracts
+@using Linear.Web.Features.Labels.Delete
+@using Linear.Web.Features.Labels.List
+@using Linear.Web.Features.Teams.Contracts
+@using Linear.Web.Features.Teams.GetByKey
+
+@inject GetTeamByKeyHandler GetTeam
+@inject ListLabelsHandler ListLabels
+@inject DeleteLabelHandler DeleteLabel
+@inject IDialogService DialogService
+@inject ISnackbar Snackbar
+
+<PageTitle>Labels · Linear</PageTitle>
+
+<TeamPageHeader Team="_team" TeamKey="@Key" ActiveTab="labels" />
+
+@if (_loading)
+{
+    <MudSkeleton Height="220px" />
+}
+else if (_error is not null)
+{
+    <MudAlert Severity="Severity.Error" Dense="true" Variant="Variant.Outlined">
+        @_error.Description
+    </MudAlert>
+}
+else
+{
+    <MudStack Spacing="4">
+        @if (CanManage)
+        {
+            <div>
+                <MudButton Variant="Variant.Filled"
+                           Color="Color.Primary"
+                           Size="Size.Small"
+                           StartIcon="@Icons.Material.Rounded.Add"
+                           OnClick="() => OpenDialogAsync(null)">
+                    Nueva label
+                </MudButton>
+            </div>
+        }
+
+        @if (_labels.Count == 0)
+        {
+            <MudPaper Outlined="true" Class="pa-8">
+                <MudStack AlignItems="AlignItems.Center" Spacing="2">
+                    <MudIcon Icon="@Icons.Material.Rounded.Label" Size="Size.Large" Color="Color.Secondary" />
+                    <MudText Typo="Typo.h4">Sin labels todavía</MudText>
+                    <MudText Typo="Typo.body2" Color="Color.Secondary" Align="Align.Center">
+                        Las labels sirven para categorizar los issues del equipo.
+                    </MudText>
+                </MudStack>
+            </MudPaper>
+        }
+        else
+        {
+            <MudPaper Outlined="true">
+                <MudTable Items="_labels" Dense="true" Hover="true" Elevation="0">
+                    <HeaderContent>
+                        <MudTh>Label</MudTh>
+                        <MudTh>Descripción</MudTh>
+                        <MudTh />
+                    </HeaderContent>
+                    <RowTemplate>
+                        <MudTd DataLabel="Label">
+                            <LabelChip Label="context" />
+                        </MudTd>
+                        <MudTd DataLabel="Descripción">
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                @(context.Description ?? "—")
+                            </MudText>
+                        </MudTd>
+                        <MudTd Style="text-align: right;">
+                            @if (CanManage)
+                            {
+                                <MudIconButton Icon="@Icons.Material.Rounded.Edit"
+                                               Size="Size.Small"
+                                               aria-label="Editar label"
+                                               Disabled="_busy"
+                                               OnClick="() => OpenDialogAsync(context)" />
+                                <MudIconButton Icon="@Icons.Material.Rounded.DeleteOutline"
+                                               Size="Size.Small"
+                                               aria-label="Eliminar label"
+                                               Disabled="_busy"
+                                               OnClick="() => DeleteAsync(context)" />
+                            }
+                        </MudTd>
+                    </RowTemplate>
+                </MudTable>
+            </MudPaper>
+        }
+
+        @if (CanManage && _labels.Count > 0)
+        {
+            <MudPaper Outlined="true" Class="pa-4">
+                <MudText Typo="Typo.h4" Class="mb-1">Selector de labels</MudText>
+                <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-3">
+                    Así se van a elegir las labels de un issue. Acá sirve para probar cómo se ven.
+                </MudText>
+                <LabelSelector TeamKey="@Key"
+                               SelectedIds="_previewSelection"
+                               SelectedIdsChanged="ids => _previewSelection = ids" />
+            </MudPaper>
+        }
+    </MudStack>
+}
+
+@code {
+    private readonly CancellationTokenSource _cancellation = new();
+
+    [Parameter]
+    public string Key { get; set; } = string.Empty;
+
+    private TeamResponse? _team;
+    private IReadOnlyList<LabelResponse> _labels = [];
+    private IReadOnlyCollection<Guid> _previewSelection = [];
+    private Error? _error;
+    private bool _loading = true;
+    private bool _busy;
+
+    private bool CanManage =>
+        Enum.TryParse<TeamRole>(_team?.Role, out var role) && role >= TeamRole.Admin;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (_team?.Key != Key)
+        {
+            await LoadAsync();
+        }
+    }
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        _error = null;
+        StateHasChanged();
+
+        // El equipo aporta el rol del usuario, que decide qué acciones se muestran.
+        var team = await GetTeam.HandleAsync(Key, _cancellation.Token);
+
+        if (team.IsFailure)
+        {
+            _error = team.Error;
+            _loading = false;
+            StateHasChanged();
+            return;
+        }
+
+        _team = team.Value;
+
+        await ReloadLabelsAsync();
+
+        _loading = false;
+        StateHasChanged();
+    }
+
+    private async Task ReloadLabelsAsync()
+    {
+        var labels = await ListLabels.HandleAsync(
+            new ListLabelsRequest { Key = Key, PageSize = Linear.Web.Shared.Pagination.PageRequest.MaxPageSize },
+            _cancellation.Token);
+
+        if (labels.IsSuccess)
+        {
+            _labels = labels.Value.Items;
+        }
+        else
+        {
+            _error = labels.Error;
+        }
+    }
+
+    private async Task OpenDialogAsync(LabelResponse? label)
+    {
+        var parameters = new DialogParameters<LabelDialog>
+        {
+            { dialog => dialog.TeamKey, Key },
+            { dialog => dialog.Label, label }
+        };
+
+        var dialog = await DialogService.ShowAsync<LabelDialog>(
+            label is null ? "Nueva label" : "Editar label",
+            parameters);
+
+        var result = await dialog.Result;
+
+        if (result is { Canceled: false })
+        {
+            await ReloadLabelsAsync();
+            Snackbar.Add(label is null ? "Label creada." : "Label actualizada.", Severity.Success);
+            StateHasChanged();
+        }
+    }
+
+    private async Task DeleteAsync(LabelResponse label)
+    {
+        var confirmed = await DialogService.ShowMessageBoxAsync(
+            "Eliminar label",
+            $"Se va a eliminar «{label.Name}».",
+            yesText: "Eliminar",
+            cancelText: "Cancelar");
+
+        if (confirmed != true)
+        {
+            return;
+        }
+
+        _busy = true;
+        StateHasChanged();
+
+        var result = await DeleteLabel.HandleAsync(
+            new DeleteLabelRequest { Key = Key, LabelId = label.Id },
+            _cancellation.Token);
+
+        _busy = false;
+
+        if (result.IsFailure)
+        {
+            Snackbar.Add(result.Error.Description, Severity.Error);
+            StateHasChanged();
+            return;
+        }
+
+        await ReloadLabelsAsync();
+        Snackbar.Add("Label eliminada.", Severity.Success);
+        StateHasChanged();
+    }
+
+    public void Dispose()
+    {
+        _cancellation.Cancel();
+        _cancellation.Dispose();
+    }
+}

@@ -20,12 +20,18 @@
 
     <AuthorizeView Context="auth">
         <Authorized>
+            @* El activador es propio, así que tiene que abrir el menú a través del
+               MenuContext: MudMenu no cablea el clic de un ActivatorContent. *@
             <MudMenu AnchorOrigin="Origin.BottomRight"
                      TransformOrigin="Origin.TopRight"
                      Class="ml-2"
-                     aria-label="Menú del usuario">
-                <ActivatorContent>
-                    <UserAvatar Name="@auth.User.GetName()" AvatarUrl="@auth.User.GetAvatarUrl()" />
+                     AriaLabel="Menú del usuario">
+                <ActivatorContent Context="menu">
+                    <MudIconButton Size="Size.Small"
+                                   aria-label="Menú del usuario"
+                                   OnClick="@(() => menu.ToggleAsync())">
+                        <UserAvatar Name="@auth.User.GetName()" AvatarUrl="@auth.User.GetAvatarUrl()" />
+                    </MudIconButton>
                 </ActivatorContent>
                 <ChildContent>
                     <div class="px-4 py-2">

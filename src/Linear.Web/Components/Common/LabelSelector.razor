@@ -1,0 +1,129 @@
+@implements IDisposable
+
+@using Linear.Web.Features.Labels.Contracts
+@using Linear.Web.Features.Labels.List
+@using Linear.Web.Shared.Pagination
+
+
+@inject ListLabelsHandler ListLabels
+@* Selector de varias labels de un equipo. Se piensa para el formulario de issues, que
+   llega con la task 005, y por eso no asume nada del contenedor: recibe la selección y
+   avisa cuando cambia. *@
+<div class="label-selector">
+    @* Se usa el activador propio de MudMenu: con ActivatorContent, el botón tiene que
+       abrir el menú por su cuenta a través del MenuContext. *@
+    <MudMenu Label="@ActivatorText"
+             Variant="Variant.Outlined"
+             Size="Size.Small"
+             StartIcon="@Icons.Material.Rounded.Label"
+             Disabled="Disabled"
+             AnchorOrigin="Origin.BottomLeft"
+             TransformOrigin="Origin.TopLeft"
+             Dense="true"
+             AriaLabel="Elegir labels">
+        @if (_loading)
+        {
+            <MudMenuItem Disabled="true">Cargando…</MudMenuItem>
+        }
+        else if (_labels.Count == 0)
+        {
+            <MudMenuItem Disabled="true">El equipo todavía no tiene labels</MudMenuItem>
+        }
+        else
+        {
+            @foreach (var label in _labels)
+            {
+                <MudMenuItem OnClick="@(() => ToggleAsync(label.Id))">
+                    <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                        <MudIcon Size="Size.Small"
+                                 Icon="@(IsSelected(label.Id) ? Icons.Material.Rounded.CheckBox : Icons.Material.Rounded.CheckBoxOutlineBlank)" />
+                        <LabelChip Label="label" />
+                    </MudStack>
+                </MudMenuItem>
+            }
+        }
+    </MudMenu>
+    @if (_selected.Count > 0)
+    {
+        <div class="label-selector-chips">
+            @foreach (var label in _labels.Where(label => IsSelected(label.Id)))
+            {
+                <LabelChip Label="label" OnRemove="ToggleAsync" />
+            }
+        </div>
+    }
+</div>
+
+@code {
+    private readonly CancellationTokenSource _cancellation = new();
+
+    private IReadOnlyList<LabelResponse> _labels = [];
+    private HashSet<Guid> _selected = [];
+    private bool _loading = true;
+
+    /// <summary>Clave del equipo cuyas labels se ofrecen.</summary>
+    [Parameter, EditorRequired]
+    public required string TeamKey { get; set; }
+
+    /// <summary>Labels actualmente seleccionadas.</summary>
+    [Parameter]
+    public IReadOnlyCollection<Guid> SelectedIds { get; set; } = [];
+
+    [Parameter]
+    public EventCallback<IReadOnlyCollection<Guid>> SelectedIdsChanged { get; set; }
+
+    [Parameter]
+    public bool Disabled { get; set; }
+
+    private string ActivatorText => _selected.Count switch
+    {
+        0 => "Labels",
+        1 => "1 label",
+        _ => $"{_selected.Count} labels"
+    };
+
+    protected override void OnParametersSet() => _selected = [.. SelectedIds];
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            await LoadAsync();
+        }
+    }
+
+    private async Task LoadAsync()
+    {
+        // Se piden hasta el máximo de una página: un selector paginado no tendría sentido,
+        // y la cantidad de labels por equipo es acotada en la práctica.
+        var result = await ListLabels.HandleAsync(
+            new ListLabelsRequest { Key = TeamKey, PageSize = PageRequest.MaxPageSize },
+            _cancellation.Token);
+
+        if (result.IsSuccess)
+        {
+            _labels = result.Value.Items;
+        }
+
+        _loading = false;
+        StateHasChanged();
+    }
+
+    private bool IsSelected(Guid labelId) => _selected.Contains(labelId);
+
+    private async Task ToggleAsync(Guid labelId)
+    {
+        if (!_selected.Remove(labelId))
+        {
+            _selected.Add(labelId);
+        }
+
+        await SelectedIdsChanged.InvokeAsync([.. _selected]);
+    }
+
+    public void Dispose()
+    {
+        _cancellation.Cancel();
+        _cancellation.Dispose();
+    }
+}

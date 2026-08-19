@@ -1,0 +1,29 @@
+@using Linear.Web.Features.Labels.Contracts
+
+@* Una label se dibuja con el color que eligió el usuario, así que el texto tiene que
+   adaptarse o queda ilegible sobre los fondos claros. El servidor ya resolvió de qué lado
+   del umbral de contraste cae el color. *@
+<span class="label-chip @(Label.PrefersDarkText ? "label-chip-dark-text" : "label-chip-light-text")"
+      style="background-color: @Label.Color;"
+      title="@(Label.Description ?? Label.Name)">
+    @Label.Name
+
+    @if (OnRemove.HasDelegate)
+    {
+        <button type="button"
+                class="label-chip-remove"
+                aria-label="@($"Quitar {Label.Name}")"
+                @onclick="() => OnRemove.InvokeAsync(Label.Id)">
+            ✕
+        </button>
+    }
+</span>
+
+@code {
+    [Parameter, EditorRequired]
+    public required LabelResponse Label { get; set; }
+
+    /// <summary>Si se define, el chip muestra un botón para quitar la label.</summary>
+    [Parameter]
+    public EventCallback<Guid> OnRemove { get; set; }
+}

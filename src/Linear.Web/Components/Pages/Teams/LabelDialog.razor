@@ -1,0 +1,159 @@
+@using Linear.Domain.Labels
+@using Linear.Web.Features.Labels.Contracts
+@using Linear.Web.Features.Labels.Create
+@using Linear.Web.Features.Labels.Update
+
+@inject CreateLabelHandler CreateLabel
+@inject UpdateLabelHandler UpdateLabel
+
+@* Un único diálogo para crear y editar: los campos y las validaciones son los mismos, y
+   mantener dos copias haría que se separaran al primer cambio. *@
+<MudDialog>
+    <DialogContent>
+        <MudStack Spacing="3">
+            @if (_error is not null)
+            {
+                <MudAlert Severity="Severity.Error" Dense="true" Variant="Variant.Outlined">
+                    @_error.Description
+                </MudAlert>
+            }
+
+            <MudTextField @bind-Value="_name"
+                          Label="Nombre"
+                          Variant="Variant.Outlined"
+                          Margin="Margin.Dense"
+                          Immediate="true"
+                          MaxLength="@MaxNameLength"
+                          Required="true" />
+
+            <MudTextField @bind-Value="_description"
+                          Label="Descripción"
+                          Variant="Variant.Outlined"
+                          Margin="Margin.Dense"
+                          Lines="2"
+                          MaxLength="@MaxDescriptionLength" />
+
+            <div>
+                <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mb-2">Color</MudText>
+                <div class="color-grid">
+                    @foreach (var color in Palette)
+                    {
+                        <button type="button"
+                                class="color-swatch @(_color == color ? "color-swatch-selected" : "")"
+                                style="background-color: @color;"
+                                aria-label="@($"Elegir el color {color}")"
+                                @onclick="() => _color = color">
+                        </button>
+                    }
+                </div>
+            </div>
+
+            <div>
+                <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mb-2">Vista previa</MudText>
+                <LabelChip Label="Preview" />
+            </div>
+        </MudStack>
+    </DialogContent>
+    <DialogActions>
+        <MudButton Size="Size.Small" OnClick="Cancel">Cancelar</MudButton>
+        <MudButton Size="Size.Small"
+                   Variant="Variant.Filled"
+                   Color="Color.Primary"
+                   Disabled="_saving"
+                   OnClick="SubmitAsync">
+            @(Label is null ? "Crear label" : "Guardar")
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    // El parámetro Label tapa al tipo del dominio dentro del marcado, así que los límites
+    // se exponen con un alias.
+    private const int MaxNameLength = Linear.Domain.Labels.Label.MaxNameLength;
+    private const int MaxDescriptionLength = Linear.Domain.Labels.Label.MaxDescriptionLength;
+
+    /// <summary>Paleta acotada: elegir de una lista da resultados más consistentes que un selector libre.</summary>
+    private static readonly string[] Palette =
+    [
+        "#5B5BD6", "#3D6FC6", "#2E7D5B", "#4CB782",
+        "#E0A03D", "#B0741A", "#E5484D", "#C63D3D",
+        "#8A8F98", "#6E6E80", "#B44DBE", "#0F7B8A"
+    ];
+
+    [CascadingParameter]
+    private IMudDialogInstance Dialog { get; set; } = default!;
+
+    /// <summary>Clave del equipo dueño de la label.</summary>
+    [Parameter, EditorRequired]
+    public required string TeamKey { get; set; }
+
+    /// <summary>Label a editar. Si es <c>null</c>, el diálogo crea una nueva.</summary>
+    [Parameter]
+    public LabelResponse? Label { get; set; }
+
+    private string _name = string.Empty;
+    private string? _description;
+    private string _color = LabelColor.Default.Value;
+    private Error? _error;
+    private bool _saving;
+
+    /// <summary>Refleja en vivo lo que se está escribiendo, sin ir al servidor.</summary>
+    private LabelResponse Preview => new(
+        Guid.Empty,
+        string.IsNullOrWhiteSpace(_name) ? "Sin nombre" : _name,
+        _description,
+        _color,
+        PrefersDarkText: LabelColor.Create(_color) is { IsSuccess: true } color && color.Value.PrefersDarkText,
+        DateTimeOffset.UtcNow);
+
+    protected override void OnInitialized()
+    {
+        if (Label is null)
+        {
+            return;
+        }
+
+        _name = Label.Name;
+        _description = Label.Description;
+        _color = Label.Color;
+    }
+
+    private async Task SubmitAsync()
+    {
+        _saving = true;
+        _error = null;
+
+        var result = Label is null
+            ? await CreateLabel.HandleAsync(
+                new CreateLabelRequest
+                {
+                    Key = TeamKey,
+                    Name = _name,
+                    Description = _description,
+                    Color = _color
+                },
+                CancellationToken.None)
+            : await UpdateLabel.HandleAsync(
+                new UpdateLabelRequest
+                {
+                    Key = TeamKey,
+                    LabelId = Label.Id,
+                    Name = _name,
+                    Description = _description,
+                    Color = _color
+                },
+                CancellationToken.None);
+
+        _saving = false;
+
+        if (result.IsFailure)
+        {
+            _error = result.Error;
+            return;
+        }
+
+        Dialog.Close(DialogResult.Ok(result.Value));
+    }
+
+    private void Cancel() => Dialog.Cancel();
+}

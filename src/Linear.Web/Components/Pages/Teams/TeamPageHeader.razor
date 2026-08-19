@@ -24,6 +24,13 @@
                    StartIcon="@Icons.Material.Rounded.Group">
             Miembros
         </MudButton>
+        <MudButton Href="@($"/teams/{TeamKey}/labels")"
+                   Size="Size.Small"
+                   Variant="@(ActiveTab == "labels" ? Variant.Filled : Variant.Text)"
+                   Color="@(ActiveTab == "labels" ? Color.Primary : Color.Default)"
+                   StartIcon="@Icons.Material.Rounded.Label">
+            Labels
+        </MudButton>
         <MudButton Href="@($"/teams/{TeamKey}/settings")"
                    Size="Size.Small"
                    Variant="@(ActiveTab == "settings" ? Variant.Filled : Variant.Text)"

@@ -2,27 +2,25 @@
 
 @using Linear.Web.Features.Teams.Contracts
 @using Linear.Web.Features.Teams.List
+@using Linear.Web.Shared.Pagination
 
 @inject ListTeamsHandler ListTeams
 @inject NavigationManager Navigation
 
 @* Permite saltar entre equipos sin volver al listado, que es la operación más frecuente
    una vez que alguien pertenece a más de uno. *@
-<MudMenu FullWidth="true"
-         AnchorOrigin="Origin.BottomLeft"
-         TransformOrigin="Origin.TopLeft"
-         Class="px-2 pt-2"
-         aria-label="Cambiar de equipo">
-    <ActivatorContent>
-        <MudButton FullWidth="true"
-                   Variant="Variant.Outlined"
-                   Size="Size.Small"
-                   Class="justify-space-between"
-                   EndIcon="@Icons.Material.Rounded.UnfoldMore">
-            @(_current?.Name ?? "Equipos")
-        </MudButton>
-    </ActivatorContent>
-    <ChildContent>
+<div class="px-2 pt-2">
+    @* Se usa el activador propio de MudMenu: con ActivatorContent, el botón tiene que
+       abrir el menú por su cuenta a través del MenuContext. *@
+    <MudMenu FullWidth="true"
+             Label="@(_current?.Name ?? "Equipos")"
+             Variant="Variant.Outlined"
+             Size="Size.Small"
+             EndIcon="@Icons.Material.Rounded.UnfoldMore"
+             AnchorOrigin="Origin.BottomLeft"
+             TransformOrigin="Origin.TopLeft"
+             Dense="true"
+             AriaLabel="Cambiar de equipo">
         @if (_teams.Count == 0)
         {
             <MudMenuItem Disabled="true">Todavía no tenés equipos</MudMenuItem>
@@ -43,8 +41,8 @@
         <MudMenuItem Href="/teams" Icon="@Icons.Material.Rounded.Groups">
             Ver todos los equipos
         </MudMenuItem>
-    </ChildContent>
-</MudMenu>
+    </MudMenu>
+</div>
 
 @code {
     private readonly CancellationTokenSource _cancellation = new();
@@ -67,7 +65,7 @@
         // Se piden hasta el máximo permitido por página: el selector no tiene sentido
         // paginado, y la cantidad de equipos por persona es acotada en la práctica.
         var result = await ListTeams.HandleAsync(
-            new ListTeamsRequest { PageSize = Linear.Web.Shared.Pagination.PageRequest.MaxPageSize },
+            new ListTeamsRequest { PageSize = PageRequest.MaxPageSize },
             _cancellation.Token);
 
         if (result.IsSuccess)

@@ -49,6 +49,21 @@ public sealed class SampleDataSeederTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task EveryTeamGetsTheSampleLabels()
+    {
+        await SeedAsync();
+
+        using var scope = _factory.Services.CreateScope();
+        var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+
+        var teams = await dbContext.Teams.CountAsync();
+        var labels = await dbContext.Labels.CountAsync();
+
+        // Cada equipo recibe el mismo juego de labels.
+        Assert.Equal(teams * 5, labels);
+    }
+
+    [Fact]
     public async Task EveryTeamHasAnOwnerAndItsMembers()
     {
         await SeedAsync();

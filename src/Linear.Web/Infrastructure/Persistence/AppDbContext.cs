@@ -1,5 +1,6 @@
 using System.Reflection;
 
+using Linear.Domain.Labels;
 using Linear.Domain.Teams;
 using Linear.Domain.Users;
 
@@ -19,6 +20,8 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<User> Users => Set<User>();
 
     public DbSet<Team> Teams => Set<Team>();
+
+    public DbSet<Label> Labels => Set<Label>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

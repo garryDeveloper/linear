@@ -1,0 +1,22 @@
+.color-grid {
+    display: grid;
+    gap: 0.5rem;
+    grid-template-columns: repeat(6, 1fr);
+}
+
+.color-swatch {
+    aspect-ratio: 1;
+    border: 2px solid transparent;
+    border-radius: 50%;
+    cursor: pointer;
+    padding: 0;
+    width: 100%;
+}
+
+.color-swatch:hover {
+    border-color: var(--mud-palette-lines-default);
+}
+
+.color-swatch-selected {
+    border-color: var(--mud-palette-text-primary);
+}

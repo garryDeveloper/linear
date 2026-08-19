@@ -87,6 +87,20 @@ Un usuario que no pertenece a un equipo recibe la misma respuesta que si el equi
 existiera, para que no sea posible averiguar qué equipos hay en la instalación.
 
 
+
+## Labels
+
+Cada equipo tiene su propio juego de labels para categorizar issues; no se comparten entre
+equipos ni existen labels globales. El nombre es único dentro del equipo **sin distinguir
+mayúsculas**, para que no convivan `bug` y `Bug`.
+
+Leer las labels alcanza con pertenecer al equipo. Crearlas, editarlas y eliminarlas es
+administrar la configuración del equipo, así que pide rol Admin u Owner.
+
+El color se elige de una paleta y se guarda en hexadecimal. El servidor calcula si sobre
+ese fondo el texto debe ir claro u oscuro —comparando ambos contrastes según WCAG— para que
+cada lugar que dibuje una label no repita ese cálculo.
+
 ## Datos de ejemplo
 
 Hay un seeder que carga usuarios y equipos para poder recorrer la aplicación con contenido
@@ -113,6 +127,9 @@ Cinco cuentas, todas con la contraseña de `Seed:SamplePassword` (`Linear-Dev-12
 | `carla.rossi@linear.dev` | Carla Rossi | Activa (Admin de la instalación) |
 | `diego.molina@linear.dev` | Diego Molina | Activa |
 | `elena.vargas@linear.dev` | Elena Vargas | **Desactivada**, a propósito |
+
+Cada equipo recibe además cinco labels (`bug`, `mejora`, `documentación`, `deuda técnica`,
+`urgente`).
 
 Y tres equipos. El reparto de roles está pensado para que la cuenta administradora quede
 como Owner de uno, Admin de otro y Member del tercero, y así se puedan ver los tres niveles

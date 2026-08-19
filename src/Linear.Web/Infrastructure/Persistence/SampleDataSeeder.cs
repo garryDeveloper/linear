@@ -1,3 +1,4 @@
+using Linear.Domain.Labels;
 using Linear.Domain.Teams;
 using Linear.Domain.Users;
 using Linear.Web.Infrastructure.Authentication;
@@ -75,6 +76,22 @@ public sealed class SampleDataSeeder(
     /// <summary>
     /// Marca la cuenta administradora, cuyo email es configurable y no se conoce acá.
     /// </summary>
+    /// <summary>
+    /// Labels de ejemplo, iguales para todos los equipos.
+    /// </summary>
+    /// <remarks>
+    /// Son las categorías que aparecen en casi cualquier gestor de issues; sirven para ver
+    /// la pantalla con contenido y para probar el selector múltiple.
+    /// </remarks>
+    private static readonly SampleLabel[] SampleLabels =
+    [
+        new("bug", "Algo no funciona como debería.", "#E5484D"),
+        new("mejora", "Una mejora sobre algo que ya existe.", "#4CB782"),
+        new("documentación", "Falta o hay que corregir documentación.", "#3D6FC6"),
+        new("deuda técnica", "Trabajo que hay que rehacer más adelante.", "#E0A03D"),
+        new("urgente", "Hay que atenderlo cuanto antes.", "#C63D3D")
+    ];
+
     private const string AdminPlaceholder = "{admin}";
 
     public async Task SeedAsync(CancellationToken cancellationToken)
@@ -110,10 +127,64 @@ public sealed class SampleDataSeeder(
 
         var createdTeams = await EnsureTeamsAsync(usersByEmail, now, cancellationToken);
 
+        // Después de los equipos: las labels cuelgan de ellos.
+        var createdLabels = await EnsureLabelsAsync(now, cancellationToken);
+
         logger.LogInformation(
-            "Datos de ejemplo listos: {UserCount} cuentas y {TeamCount} equipos nuevos.",
+            "Datos de ejemplo listos: {UserCount} cuentas, {TeamCount} equipos y {LabelCount} labels nuevas.",
             usersByEmail.Count,
-            createdTeams);
+            createdTeams,
+            createdLabels);
+    }
+
+
+    /// <summary>
+    /// Da a cada equipo el mismo juego de labels, salteando las que ya tenga.
+    /// </summary>
+    private async Task<int> EnsureLabelsAsync(DateTimeOffset now, CancellationToken cancellationToken)
+    {
+        var teams = await dbContext.Teams
+            .AsNoTracking()
+            .Select(team => team.Id)
+            .ToArrayAsync(cancellationToken);
+
+        var existing = await dbContext.Labels
+            .AsNoTracking()
+            .Select(label => new { label.TeamId, label.NormalizedName })
+            .ToArrayAsync(cancellationToken);
+
+        var taken = existing
+            .Select(label => (label.TeamId, label.NormalizedName))
+            .ToHashSet();
+
+        var created = 0;
+
+        foreach (var teamId in teams)
+        {
+            foreach (var sample in SampleLabels)
+            {
+                if (taken.Contains((teamId, sample.Name.ToUpperInvariant())))
+                {
+                    continue;
+                }
+
+                var color = LabelColor.Create(sample.Color);
+                var label = Label.Create(teamId, sample.Name, sample.Description, color.Value, now);
+
+                if (label.IsFailure)
+                {
+                    logger.LogWarning("Se omitió la label de ejemplo '{Name}': {Error}", sample.Name, label.Error);
+                    continue;
+                }
+
+                dbContext.Labels.Add(label.Value);
+                created++;
+            }
+        }
+
+        await dbContext.SaveChangesAsync(cancellationToken);
+
+        return created;
     }
 
     private async Task<Dictionary<string, Guid>> EnsureUsersAsync(
@@ -292,4 +363,6 @@ public sealed class SampleDataSeeder(
     private sealed record SampleTeam(string Key, string Name, string Description, SampleMembership[] Members);
 
     private sealed record SampleMembership(string Email, TeamRole Role);
+
+    private sealed record SampleLabel(string Name, string Description, string Color);
 }
