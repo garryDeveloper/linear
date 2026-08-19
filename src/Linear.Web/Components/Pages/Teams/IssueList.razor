@@ -1,0 +1,234 @@
+@page "/teams/{Key}/issues"
+@implements IDisposable
+
+@using Linear.Web.Features.Issues.Contracts
+@using Linear.Web.Features.Issues.List
+@using Linear.Web.Features.Teams.Contracts
+@using Linear.Web.Features.Teams.GetByKey
+@using Linear.Web.Shared.Pagination
+
+@inject GetTeamByKeyHandler GetTeam
+@inject ListIssuesHandler ListIssues
+@inject IDialogService DialogService
+@inject NavigationManager Navigation
+
+<PageTitle>Issues · Linear</PageTitle>
+
+<TeamPageHeader Team="_team" TeamKey="@Key" />
+
+@if (_loading)
+{
+    <MudSkeleton Height="220px" />
+}
+else if (_error is not null)
+{
+    <MudAlert Severity="Severity.Error" Dense="true" Variant="Variant.Outlined">
+        @_error.Description
+    </MudAlert>
+}
+else
+{
+    <MudStack Spacing="4">
+        <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+            <MudText Typo="Typo.body2" Color="Color.Secondary">
+                @_page!.TotalCount @(_page.TotalCount == 1 ? "issue" : "issues")
+            </MudText>
+            <MudButton Variant="Variant.Filled"
+                       Color="Color.Primary"
+                       Size="Size.Small"
+                       StartIcon="@Icons.Material.Rounded.Add"
+                       OnClick="CreateIssueAsync">
+                Nuevo issue
+            </MudButton>
+        </MudStack>
+
+        @if (_page.Items.Count == 0)
+        {
+            <MudPaper Outlined="true" Class="pa-8">
+                <MudStack AlignItems="AlignItems.Center" Spacing="2">
+                    <MudIcon Icon="@Icons.Material.Rounded.List" Size="Size.Large" Color="Color.Secondary" />
+                    <MudText Typo="Typo.h4">Sin issues todavía</MudText>
+                    <MudText Typo="Typo.body2" Color="Color.Secondary" Align="Align.Center">
+                        Creá el primero para empezar a organizar el trabajo del equipo.
+                    </MudText>
+                    <MudButton Variant="Variant.Filled"
+                               Color="Color.Primary"
+                               Size="Size.Small"
+                               StartIcon="@Icons.Material.Rounded.Add"
+                               OnClick="CreateIssueAsync">
+                        Crear issue
+                    </MudButton>
+                </MudStack>
+            </MudPaper>
+        }
+        else
+        {
+            <MudPaper Outlined="true" Class="issue-list">
+                @foreach (var group in GroupedIssues())
+                {
+                    <div class="issue-group-header">
+                        <MudIcon Icon="@IssueStatusLabel.IconFor(group.Status)"
+                                 Color="@IssueStatusLabel.ColorFor(group.Status)"
+                                 Size="Size.Small" />
+                        <MudText Typo="Typo.body2" Class="issue-group-title">
+                            @IssueStatusLabel.For(group.Status)
+                        </MudText>
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">@group.Items.Count</MudText>
+                    </div>
+
+                    @foreach (var issue in group.Items)
+                    {
+                        <div class="issue-row" @onclick="() => OpenIssue(issue.Identifier)">
+                            <span class="issue-row-identifier">@issue.Identifier</span>
+                            <span class="issue-row-title">@issue.Title</span>
+                            <span class="issue-row-labels">
+                                @foreach (var label in issue.Labels)
+                                {
+                                    <LabelChip Label="label" />
+                                }
+                            </span>
+                            <IssuePriorityMark Priority="ParsePriority(issue.Priority)" ShowLabel="false" />
+                            @if (issue.Estimate is { } estimate)
+                            {
+                                <span class="issue-row-estimate">@estimate</span>
+                            }
+                            @if (issue.Assignee is { } assignee)
+                            {
+                                <UserAvatar Name="@assignee.Name" AvatarUrl="@assignee.AvatarUrl" />
+                            }
+                            else
+                            {
+                                <MudIcon Icon="@Icons.Material.Rounded.PersonOutline"
+                                         Color="Color.Secondary"
+                                         Size="Size.Small"
+                                         Title="Sin asignar" />
+                            }
+                        </div>
+                    }
+                }
+            </MudPaper>
+        }
+
+        @if (_page.TotalPages > 1)
+        {
+            <MudPagination Count="_page.TotalPages"
+                           Selected="_currentPage"
+                           SelectedChanged="GoToPageAsync"
+                           Size="Size.Small" />
+        }
+    </MudStack>
+}
+
+@code {
+    private readonly CancellationTokenSource _cancellation = new();
+
+    [Parameter]
+    public string Key { get; set; } = string.Empty;
+
+    private TeamResponse? _team;
+    private PagedResult<IssueSummaryResponse>? _page;
+    private Error? _error;
+    private bool _loading = true;
+    private int _currentPage = 1;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (_team?.Key != Key)
+        {
+            await LoadAsync();
+        }
+    }
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        _error = null;
+        StateHasChanged();
+
+        var team = await GetTeam.HandleAsync(Key, _cancellation.Token);
+
+        if (team.IsFailure)
+        {
+            _error = team.Error;
+            _loading = false;
+            StateHasChanged();
+            return;
+        }
+
+        _team = team.Value;
+
+        await ReloadIssuesAsync();
+
+        _loading = false;
+        StateHasChanged();
+    }
+
+    private async Task ReloadIssuesAsync()
+    {
+        var result = await ListIssues.HandleAsync(
+            new ListIssuesRequest { Key = Key, Page = _currentPage },
+            _cancellation.Token);
+
+        if (result.IsSuccess)
+        {
+            _page = result.Value;
+        }
+        else
+        {
+            _error = result.Error;
+        }
+    }
+
+    private async Task GoToPageAsync(int page)
+    {
+        _currentPage = page;
+        await ReloadIssuesAsync();
+        StateHasChanged();
+    }
+
+    /// <summary>
+    /// Agrupa la página actual por estado, en el orden en que conviene leer un tablero:
+    /// lo que está en curso primero, lo hecho y lo cancelado al final.
+    /// </summary>
+    private IEnumerable<(IssueStatus Status, IReadOnlyList<IssueSummaryResponse> Items)> GroupedIssues()
+    {
+        var byStatus = _page!.Items
+            .GroupBy(issue => ParseStatus(issue.Status))
+            .ToDictionary(group => group.Key, group => (IReadOnlyList<IssueSummaryResponse>)group.ToArray());
+
+        foreach (var status in IssueStatusLabel.DisplayOrder)
+        {
+            if (byStatus.TryGetValue(status, out var items))
+            {
+                yield return (status, items);
+            }
+        }
+    }
+
+    private void OpenIssue(string identifier) => Navigation.NavigateTo($"/teams/{Key}/issues/{identifier}");
+
+    private async Task CreateIssueAsync()
+    {
+        var parameters = new DialogParameters<CreateIssueDialog> { { dialog => dialog.Team, _team! } };
+
+        var dialog = await DialogService.ShowAsync<CreateIssueDialog>("Nuevo issue", parameters);
+        var result = await dialog.Result;
+
+        if (result is { Canceled: false, Data: string identifier })
+        {
+            Navigation.NavigateTo($"/teams/{Key}/issues/{identifier}");
+        }
+    }
+
+    private static IssueStatus ParseStatus(string status) =>
+        Enum.TryParse<IssueStatus>(status, out var parsed) ? parsed : IssueStatus.Backlog;
+
+    private static IssuePriority ParsePriority(string priority) =>
+        Enum.TryParse<IssuePriority>(priority, out var parsed) ? parsed : IssuePriority.None;
+
+    public void Dispose()
+    {
+        _cancellation.Cancel();
+        _cancellation.Dispose();
+    }
+}

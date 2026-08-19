@@ -95,8 +95,12 @@ public static class LinearTheme
         LayoutProperties = new LayoutProperties
         {
             DefaultBorderRadius = "6px",
-            DrawerWidthLeft = "240px",
-            AppbarHeight = "48px"
+
+            // La barra lateral se angosta a propósito: cuanto menos espacio ocupe el marco,
+            // más queda para el contenido que la persona vino a ver. La barra superior no
+            // tiene un equivalente acá porque AppHeader ya la fija en modo Dense, que produce
+            // una barra más angosta (34px) que cualquier valor que se pudiera fijar aquí.
+            DrawerWidthLeft = "224px"
         }
     };
 }

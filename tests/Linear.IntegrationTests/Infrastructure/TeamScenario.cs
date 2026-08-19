@@ -1,3 +1,4 @@
+using Linear.Domain.Labels;
 using Linear.Domain.Teams;
 using Linear.Web.Infrastructure.Persistence;
 
@@ -51,5 +52,22 @@ internal static class TeamScenario
         team.AddMember(userId, role, DateTimeOffset.UtcNow);
 
         await dbContext.SaveChangesAsync();
+    }
+
+    public static async Task<Label> CreateLabelAsync(
+        DatabaseWebApplicationFactory factory,
+        Guid teamId,
+        string name = "bug")
+    {
+        using var scope = factory.Services.CreateScope();
+
+        var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+
+        var label = Label.Create(teamId, name, description: null, LabelColor.Default, DateTimeOffset.UtcNow).Value;
+
+        dbContext.Labels.Add(label);
+        await dbContext.SaveChangesAsync();
+
+        return label;
     }
 }

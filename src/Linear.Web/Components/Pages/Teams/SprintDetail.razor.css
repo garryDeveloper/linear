@@ -1,0 +1,96 @@
+.sprint-summary {
+    flex-wrap: wrap;
+}
+
+.sprint-metrics {
+    color: var(--mud-palette-text-secondary);
+    display: flex;
+    flex-wrap: wrap;
+    font-size: 0.75rem;
+    gap: 1rem;
+}
+
+.sprint-metric strong {
+    color: var(--mud-palette-text-primary);
+    font-variant-numeric: tabular-nums;
+}
+
+/* Cuatro columnas fijas — las que define la task — con scroll horizontal propio en
+   pantallas angostas, para que la página nunca desborde. */
+.sprint-board {
+    display: grid;
+    gap: 0.75rem;
+    grid-template-columns: repeat(4, minmax(15rem, 1fr));
+    overflow-x: auto;
+    padding-bottom: 0.5rem;
+}
+
+.board-column {
+    background-color: var(--mud-palette-background-gray);
+    border-radius: var(--mud-default-borderradius);
+    display: flex;
+    flex-direction: column;
+    gap: 0.375rem;
+    min-width: 0;
+    padding: 0.5rem;
+}
+
+.board-column-header {
+    align-items: center;
+    display: flex;
+    gap: 0.375rem;
+    padding: 0.125rem 0.25rem;
+}
+
+.board-column-title {
+    font-weight: 600;
+}
+
+.board-card {
+    background-color: var(--mud-palette-surface);
+    border: 1px solid var(--mud-palette-lines-default);
+    border-radius: var(--mud-default-borderradius);
+    display: flex;
+    flex-direction: column;
+    gap: 0.375rem;
+    padding: 0.5rem;
+}
+
+.board-card:hover {
+    border-color: var(--mud-palette-primary);
+}
+
+.board-card-head {
+    align-items: center;
+    display: flex;
+    justify-content: space-between;
+    min-height: 1.5rem;
+}
+
+.board-card-identifier {
+    color: var(--mud-palette-text-secondary);
+    cursor: pointer;
+    font-family: ui-monospace, "Cascadia Code", "SF Mono", Consolas, monospace;
+    font-size: 0.6875rem;
+}
+
+.board-card-title {
+    cursor: pointer;
+    font-size: 0.8125rem;
+    line-height: 1.35;
+    overflow-wrap: anywhere;
+}
+
+.board-card-foot {
+    align-items: center;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.25rem;
+}
+
+.board-card-estimate {
+    color: var(--mud-palette-text-secondary);
+    font-size: 0.6875rem;
+    font-variant-numeric: tabular-nums;
+    margin-left: auto;
+}

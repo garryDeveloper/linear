@@ -1,6 +1,7 @@
 using Linear.Domain.Common;
 using Linear.Domain.Labels;
 using Linear.Web.Features.Labels.Contracts;
+using Linear.Web.Features.Teams.Contracts;
 using Linear.Web.Infrastructure.Authorization;
 using Linear.Web.Infrastructure.Persistence;
 
@@ -29,7 +30,7 @@ public sealed class CreateLabelHandler(
 
         await using var dbContext = await dbContextFactory.CreateDbContextAsync(cancellationToken);
 
-        var team = await TeamLabelAccess.ForManagingAsync(teamAccess, dbContext, request.Key, cancellationToken);
+        var team = await TeamSectionAccess.RequireAdminAsync(teamAccess, dbContext, request.Key, cancellationToken);
 
         if (team.IsFailure)
         {

@@ -1,0 +1,105 @@
+@using Linear.Domain.Issues
+@using Linear.Web.Features.Issues.Contracts
+@using Linear.Web.Features.Issues.Create
+@using Linear.Web.Features.Teams.Contracts
+
+@inject CreateIssueHandler CreateIssue
+
+<MudDialog>
+    <DialogContent>
+        <MudStack Spacing="3" Style="min-width: 420px;">
+            @if (_error is not null)
+            {
+                <MudAlert Severity="Severity.Error" Dense="true" Variant="Variant.Outlined">
+                    @_error.Description
+                </MudAlert>
+            }
+
+            <MudTextField @bind-Value="_title"
+                          Label="Título"
+                          Variant="Variant.Outlined"
+                          Margin="Margin.Dense"
+                          Immediate="true"
+                          MaxLength="@Issue.MaxTitleLength"
+                          Required="true"
+                          AutoFocus="true" />
+
+            <MudTextField @bind-Value="_description"
+                          Label="Descripción"
+                          Variant="Variant.Outlined"
+                          Margin="Margin.Dense"
+                          Lines="4" />
+
+            <MudSelect T="Guid?"
+                       @bind-Value="_assigneeId"
+                       Label="Responsable"
+                       Variant="Variant.Outlined"
+                       Margin="Margin.Dense"
+                       Clearable="true">
+                @foreach (var member in Team.Members)
+                {
+                    <MudSelectItem T="Guid?" Value="member.UserId">@member.Name</MudSelectItem>
+                }
+            </MudSelect>
+
+            <LabelSelector TeamKey="@Team.Key"
+                           SelectedIds="_labelIds"
+                           SelectedIdsChanged="ids => _labelIds = ids" />
+        </MudStack>
+    </DialogContent>
+    <DialogActions>
+        <MudButton Size="Size.Small" OnClick="Cancel">Cancelar</MudButton>
+        <MudButton Size="Size.Small"
+                   Variant="Variant.Filled"
+                   Color="Color.Primary"
+                   Disabled="_saving"
+                   OnClick="SubmitAsync">
+            Crear issue
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter]
+    private IMudDialogInstance Dialog { get; set; } = default!;
+
+    /// <summary>Equipo dueño del issue, ya cargado por quien abre el diálogo.</summary>
+    [Parameter, EditorRequired]
+    public required TeamResponse Team { get; set; }
+
+    private string _title = string.Empty;
+    private string? _description;
+    private Guid? _assigneeId;
+    private IReadOnlyCollection<Guid> _labelIds = [];
+    private Error? _error;
+    private bool _saving;
+
+    private async Task SubmitAsync()
+    {
+        _saving = true;
+        _error = null;
+
+        var result = await CreateIssue.HandleAsync(
+            new CreateIssueRequest
+            {
+                Key = Team.Key,
+                Title = _title,
+                Description = _description,
+                AssigneeId = _assigneeId,
+                LabelIds = [.. _labelIds]
+            },
+            CancellationToken.None);
+
+        _saving = false;
+
+        if (result.IsFailure)
+        {
+            _error = result.Error;
+            return;
+        }
+
+        Dialog.Close(DialogResult.Ok(result.Value.Identifier));
+    }
+
+    private void Cancel() => Dialog.Cancel();
+}

@@ -1,104 +1,11 @@
 @page "/"
-@using Linear.Web.Features.Diagnostics.Health
-@implements IDisposable
-@inject HealthHandler Health
+@inject NavigationManager Navigation
 
-<PageTitle>Inicio · Linear</PageTitle>
-
-<MudStack Spacing="4">
-    <div>
-        <MudText Typo="Typo.h1">Inicio</MudText>
-        <MudText Typo="Typo.body2" Color="Color.Secondary">
-            Estado de la instalación.
-        </MudText>
-    </div>
-
-    <MudPaper Outlined="true" Class="pa-4" Style="max-width: 520px;">
-        <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween" Class="mb-3">
-            <MudText Typo="Typo.h4">Estado del sistema</MudText>
-            <MudIconButton Icon="@Icons.Material.Rounded.Refresh"
-                           Size="Size.Small"
-                           aria-label="Volver a consultar el estado"
-                           Disabled="_loading"
-                           OnClick="LoadAsync" />
-        </MudStack>
-
-        @if (_loading)
-        {
-            <MudStack Spacing="2">
-                <MudSkeleton Width="60%" />
-                <MudSkeleton Width="45%" />
-            </MudStack>
-        }
-        else if (_error is not null)
-        {
-            <MudAlert Severity="Severity.Error" Dense="true" Variant="Variant.Outlined">
-                @_error.Description
-            </MudAlert>
-        }
-        else if (_health is not null)
-        {
-            <MudStack Spacing="2">
-                <StatusRow Label="Aplicación"
-                           Value="@_health.Status"
-                           Healthy="@(_health.Status == HealthStatuses.Healthy)" />
-                <StatusRow Label="Base de datos"
-                           Value="@_health.Database"
-                           Healthy="@(_health.Database == DatabaseStatuses.Connected)" />
-                <StatusRow Label="Entorno" Value="@_health.Environment" Healthy="true" />
-            </MudStack>
-
-            @if (_health.Database != DatabaseStatuses.Connected)
-            {
-                <MudAlert Severity="Severity.Warning" Dense="true" Variant="Variant.Outlined" Class="mt-3">
-                    PostgreSQL no responde. Levantá la base con <code>docker compose up -d</code>.
-                </MudAlert>
-            }
-        }
-    </MudPaper>
-</MudStack>
-
+@* La lista es la pantalla de inicio: no hay panel intermedio antes de ver con qué se
+   trabaja. Equipos es hoy lo más cercano a esa lista — cuando exista Issues, este
+   redirect pasa a apuntar ahí. El chequeo de salud que vivía acá se mudó a
+   Configuración: es información para quien opera la instalación, no la puerta de
+   entrada de quien la usa. *@
 @code {
-    private readonly CancellationTokenSource _cancellation = new();
-
-    private HealthResponse? _health;
-    private Error? _error;
-    private bool _loading = true;
-
-    protected override async Task OnAfterRenderAsync(bool firstRender)
-    {
-        // Se consulta recién en el render interactivo: durante el prerender el resultado
-        // se descartaría al establecerse el circuito y la consulta se haría dos veces.
-        if (firstRender)
-        {
-            await LoadAsync();
-        }
-    }
-
-    private async Task LoadAsync()
-    {
-        _loading = true;
-        _error = null;
-        StateHasChanged();
-
-        var result = await Health.HandleAsync(_cancellation.Token);
-
-        if (result.IsSuccess)
-        {
-            _health = result.Value;
-        }
-        else
-        {
-            _error = result.Error;
-        }
-
-        _loading = false;
-        StateHasChanged();
-    }
-
-    public void Dispose()
-    {
-        _cancellation.Cancel();
-        _cancellation.Dispose();
-    }
+    protected override void OnInitialized() => Navigation.NavigateTo("/teams", replace: true);
 }

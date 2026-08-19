@@ -1,27 +1,58 @@
+@implements IDisposable
+@inject NavigationManager Navigation
+
+@* Nunca dos niveles de navegación a la vez: dentro de un equipo, la barra lateral
+   muestra sus secciones (Issues, Sprints, Miembros, Labels, Configuración) en lugar de
+   Equipos/Configuración generales — TeamPageHeader dejó de dibujarlas como pestañas.
+   Roadmap se suma acá el día que exista (task 010). *@
 <MudDrawer Open="Open"
            OpenChanged="OpenChanged"
            Elevation="0"
            Variant="@DrawerVariant.Persistent"
            ClipMode="DrawerClipMode.Always"
            Class="border-r">
-    <TeamSelector />
-
     <MudNavMenu Dense="true" Class="pt-2">
-        <MudNavLink Href="/"
-                    Match="NavLinkMatch.All"
-                    Icon="@Icons.Material.Rounded.Home">
-            Inicio
-        </MudNavLink>
-        <MudNavLink Href="/teams"
-                    Match="NavLinkMatch.Prefix"
-                    Icon="@Icons.Material.Rounded.Groups">
-            Equipos
-        </MudNavLink>
-        <MudNavLink Href="/settings"
-                    Match="NavLinkMatch.All"
-                    Icon="@Icons.Material.Rounded.Settings">
-            Configuración
-        </MudNavLink>
+        @if (_teamKey is { } key)
+        {
+            <MudNavLink Href="@($"/teams/{key}/issues")"
+                        Match="NavLinkMatch.Prefix"
+                        Icon="@Icons.Material.Rounded.List">
+                Issues
+            </MudNavLink>
+            <MudNavLink Href="@($"/teams/{key}/sprints")"
+                        Match="NavLinkMatch.Prefix"
+                        Icon="@Icons.Material.Rounded.DateRange">
+                Sprints
+            </MudNavLink>
+            <MudNavLink Href="@($"/teams/{key}/members")"
+                        Match="NavLinkMatch.Prefix"
+                        Icon="@Icons.Material.Rounded.Group">
+                Miembros
+            </MudNavLink>
+            <MudNavLink Href="@($"/teams/{key}/labels")"
+                        Match="NavLinkMatch.Prefix"
+                        Icon="@Icons.Material.Rounded.Label">
+                Labels
+            </MudNavLink>
+            <MudNavLink Href="@($"/teams/{key}/settings")"
+                        Match="NavLinkMatch.Prefix"
+                        Icon="@Icons.Material.Rounded.Settings">
+                Configuración
+            </MudNavLink>
+        }
+        else
+        {
+            <MudNavLink Href="/teams"
+                        Match="NavLinkMatch.Prefix"
+                        Icon="@Icons.Material.Rounded.Groups">
+                Equipos
+            </MudNavLink>
+            <MudNavLink Href="/settings"
+                        Match="NavLinkMatch.All"
+                        Icon="@Icons.Material.Rounded.Settings">
+                Configuración
+            </MudNavLink>
+        }
     </MudNavMenu>
 </MudDrawer>
 
@@ -32,4 +63,23 @@
 
     [Parameter]
     public EventCallback<bool> OpenChanged { get; set; }
+
+    private string? _teamKey;
+
+    protected override void OnInitialized()
+    {
+        Navigation.LocationChanged += OnLocationChanged;
+        UpdateTeamKey();
+    }
+
+    private void OnLocationChanged(object? sender, LocationChangedEventArgs args)
+    {
+        UpdateTeamKey();
+        InvokeAsync(StateHasChanged);
+    }
+
+    private void UpdateTeamKey() =>
+        _teamKey = TeamRoute.KeyFrom(Navigation.ToBaseRelativePath(Navigation.Uri));
+
+    public void Dispose() => Navigation.LocationChanged -= OnLocationChanged;
 }

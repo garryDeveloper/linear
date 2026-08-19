@@ -1,0 +1,364 @@
+@implements IDisposable
+
+@using Linear.Domain.Comments
+@using Linear.Web.Features.Comments.Contracts
+@using Linear.Web.Features.Comments.Create
+@using Linear.Web.Features.Comments.Delete
+@using Linear.Web.Features.Comments.List
+@using Linear.Web.Features.Comments.Update
+
+@inject ListCommentsHandler ListComments
+@inject CreateCommentHandler CreateComment
+@inject UpdateCommentHandler UpdateComment
+@inject DeleteCommentHandler DeleteComment
+@inject IDialogService DialogService
+@inject ISnackbar Snackbar
+
+<section class="comments">
+    <MudText Typo="Typo.subtitle2" Class="comments-heading">
+        Comentarios@(_totalCount > 0 ? $" · {_totalCount}" : string.Empty)
+    </MudText>
+
+    @if (_loading)
+    {
+        <MudSkeleton Height="120px" />
+    }
+    else if (_error is not null)
+    {
+        <MudAlert Severity="Severity.Error" Dense="true" Variant="Variant.Outlined">
+            @_error.Description
+        </MudAlert>
+    }
+    else
+    {
+        @if (_comments.Count == 0)
+        {
+            <MudText Typo="Typo.body2" Color="Color.Secondary" Class="comments-empty">
+                Todavía no hay comentarios. Empezá la conversación.
+            </MudText>
+        }
+
+        @foreach (var comment in _comments)
+        {
+            <article class="comment" @key="comment.Id">
+                <UserAvatar Name="@comment.Author.Name" AvatarUrl="@comment.Author.AvatarUrl" />
+
+                <div class="comment-body">
+                    <div class="comment-meta">
+                        <MudText Typo="Typo.body2" Class="comment-author">@comment.Author.Name</MudText>
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">
+                            @comment.CreatedAt.ToLocalTime().ToString("dd/MM/yyyy HH:mm")
+                        </MudText>
+                        @if (comment.IsEdited)
+                        {
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">· editado</MudText>
+                        }
+
+                        @* Los permisos los decide el servidor y viajan en la respuesta: la
+                           pantalla no vuelve a deducir quién es el autor ni qué rol tiene. *@
+                        @if (comment.CanEdit || comment.CanDelete)
+                        {
+                            <MudMenu Icon="@Icons.Material.Rounded.MoreHoriz"
+                                     Size="Size.Small"
+                                     Dense="true"
+                                     AriaLabel="Acciones del comentario"
+                                     Class="comment-actions">
+                                @if (comment.CanEdit)
+                                {
+                                    <MudMenuItem Icon="@Icons.Material.Rounded.Edit"
+                                                 OnClick="@(() => BeginEdit(comment))">
+                                        Editar
+                                    </MudMenuItem>
+                                }
+                                @if (comment.CanDelete)
+                                {
+                                    <MudMenuItem Icon="@Icons.Material.Rounded.DeleteOutline"
+                                                 OnClick="@(() => DeleteAsync(comment))">
+                                        Eliminar
+                                    </MudMenuItem>
+                                }
+                            </MudMenu>
+                        }
+                    </div>
+
+                    @if (_editingId == comment.Id)
+                    {
+                        @* Immediate: sin esto el binding recién se actualiza al perder el
+                           foco, así que "Guardar" seguiría deshabilitado mientras se escribe
+                           y el primer clic no haría nada. *@
+                        <MudTextField T="string"
+                                      @bind-Value="_editContent"
+                                      Immediate="true"
+                                      Variant="Variant.Outlined"
+                                      Margin="Margin.Dense"
+                                      Lines="4"
+                                      AutoFocus="true"
+                                      MaxLength="Comment.MaxContentLength" />
+                        <MudStack Row="true" Spacing="1" Class="mt-1">
+                            <MudButton Variant="Variant.Filled"
+                                       Color="Color.Primary"
+                                       Size="Size.Small"
+                                       Disabled="_busy || string.IsNullOrWhiteSpace(_editContent)"
+                                       OnClick="SaveEditAsync">
+                                Guardar
+                            </MudButton>
+                            <MudButton Variant="Variant.Text"
+                                       Size="Size.Small"
+                                       Disabled="_busy"
+                                       OnClick="CancelEdit">
+                                Cancelar
+                            </MudButton>
+                        </MudStack>
+                    }
+                    else
+                    {
+                        @* El contenido es Markdown sin interpretar: se muestra tal cual, con
+                           los saltos de línea respetados. Renderizarlo es de la task 012. *@
+                        <div class="comment-content">@comment.Content</div>
+                    }
+                </div>
+            </article>
+        }
+
+        @if (_hasMore)
+        {
+            <MudButton Variant="Variant.Text"
+                       Size="Size.Small"
+                       Disabled="_busy"
+                       OnClick="LoadMoreAsync"
+                       Class="align-self-start">
+                Cargar más comentarios
+            </MudButton>
+        }
+
+        <div class="comment-composer">
+            <MudTextField T="string"
+                          @bind-Value="_newComment"
+                          Immediate="true"
+                          Variant="Variant.Outlined"
+                          Margin="Margin.Dense"
+                          Lines="3"
+                          Placeholder="Escribí un comentario…"
+                          MaxLength="Comment.MaxContentLength" />
+            <MudButton Variant="Variant.Filled"
+                       Color="Color.Primary"
+                       Size="Size.Small"
+                       Disabled="_busy || string.IsNullOrWhiteSpace(_newComment)"
+                       OnClick="AddAsync"
+                       Class="align-self-start mt-1">
+                Comentar
+            </MudButton>
+        </div>
+    }
+</section>
+
+@code {
+    private const int PageSize = 50;
+
+    private readonly CancellationTokenSource _cancellation = new();
+    private readonly List<CommentResponse> _comments = [];
+
+    [Parameter]
+    public string Key { get; set; } = string.Empty;
+
+    [Parameter]
+    public string Identifier { get; set; } = string.Empty;
+
+    private Error? _error;
+    private bool _loading = true;
+    private bool _busy;
+    private int _page = 1;
+    private int _totalCount;
+    private bool _hasMore;
+
+    private string _newComment = string.Empty;
+    private Guid? _editingId;
+    private string _editContent = string.Empty;
+
+    private string? _loadedFor;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        var route = $"{Key}/{Identifier}";
+
+        if (_loadedFor == route)
+        {
+            return;
+        }
+
+        _loadedFor = route;
+        await ReloadAsync();
+    }
+
+    /// <summary>Vuelve al principio del hilo y lo carga de cero.</summary>
+    private async Task ReloadAsync()
+    {
+        _loading = true;
+        _error = null;
+        _editingId = null;
+        _page = 1;
+        _comments.Clear();
+        StateHasChanged();
+
+        await LoadPageAsync(_page);
+
+        _loading = false;
+        StateHasChanged();
+    }
+
+    private async Task LoadMoreAsync()
+    {
+        _busy = true;
+        StateHasChanged();
+
+        await LoadPageAsync(_page + 1);
+
+        _busy = false;
+        StateHasChanged();
+    }
+
+    private async Task LoadPageAsync(int page)
+    {
+        var result = await ListComments.HandleAsync(
+            new ListCommentsRequest { Key = Key, Identifier = Identifier, Page = page, PageSize = PageSize },
+            _cancellation.Token);
+
+        if (result.IsFailure)
+        {
+            _error = result.Error;
+            return;
+        }
+
+        _page = result.Value.Page;
+        _totalCount = result.Value.TotalCount;
+        _hasMore = result.Value.HasNextPage;
+        _comments.AddRange(result.Value.Items);
+    }
+
+    private async Task AddAsync()
+    {
+        _busy = true;
+        StateHasChanged();
+
+        var result = await CreateComment.HandleAsync(
+            new CreateCommentRequest { Key = Key, Identifier = Identifier, Content = _newComment },
+            _cancellation.Token);
+
+        _busy = false;
+
+        if (result.IsFailure)
+        {
+            Snackbar.Add(result.Error.Description, Severity.Error);
+            StateHasChanged();
+            return;
+        }
+
+        _newComment = string.Empty;
+
+        // El comentario nuevo es el más reciente y el orden es cronológico, así que va al
+        // final del hilo sin necesidad de volver a pedirlo todo.
+        _comments.Add(result.Value);
+        _totalCount++;
+
+        StateHasChanged();
+    }
+
+    private void BeginEdit(CommentResponse comment)
+    {
+        _editingId = comment.Id;
+        _editContent = comment.Content;
+    }
+
+    private void CancelEdit()
+    {
+        _editingId = null;
+        _editContent = string.Empty;
+    }
+
+    private async Task SaveEditAsync()
+    {
+        if (_editingId is not { } commentId)
+        {
+            return;
+        }
+
+        _busy = true;
+        StateHasChanged();
+
+        var result = await UpdateComment.HandleAsync(
+            new UpdateCommentRequest
+            {
+                Key = Key,
+                Identifier = Identifier,
+                CommentId = commentId,
+                Content = _editContent
+            },
+            _cancellation.Token);
+
+        _busy = false;
+
+        if (result.IsFailure)
+        {
+            Snackbar.Add(result.Error.Description, Severity.Error);
+            StateHasChanged();
+            return;
+        }
+
+        var index = _comments.FindIndex(comment => comment.Id == commentId);
+
+        if (index >= 0)
+        {
+            _comments[index] = result.Value;
+        }
+
+        CancelEdit();
+        StateHasChanged();
+    }
+
+    private async Task DeleteAsync(CommentResponse comment)
+    {
+        var confirmed = await DialogService.ShowMessageBoxAsync(
+            "Eliminar comentario",
+            "El comentario va a dejar de verse en el issue.",
+            yesText: "Eliminar",
+            cancelText: "Cancelar");
+
+        if (confirmed != true)
+        {
+            return;
+        }
+
+        _busy = true;
+        StateHasChanged();
+
+        var result = await DeleteComment.HandleAsync(
+            new DeleteCommentRequest { Key = Key, Identifier = Identifier, CommentId = comment.Id },
+            _cancellation.Token);
+
+        _busy = false;
+
+        if (result.IsFailure)
+        {
+            Snackbar.Add(result.Error.Description, Severity.Error);
+            StateHasChanged();
+            return;
+        }
+
+        _comments.Remove(comment);
+        _totalCount--;
+
+        if (_editingId == comment.Id)
+        {
+            CancelEdit();
+        }
+
+        Snackbar.Add("Comentario eliminado.", Severity.Success);
+        StateHasChanged();
+    }
+
+    public void Dispose()
+    {
+        _cancellation.Cancel();
+        _cancellation.Dispose();
+    }
+}

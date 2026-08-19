@@ -1,0 +1,408 @@
+@page "/teams/{Key}/sprints/{SprintId:guid}"
+@implements IDisposable
+
+@using Linear.Domain.Sprints
+@using Linear.Web.Features.Issues.Contracts
+@using Linear.Web.Features.Sprints.Cancel
+@using Linear.Web.Features.Sprints.Complete
+@using Linear.Web.Features.Sprints.Contracts
+@using Linear.Web.Features.Sprints.GetById
+@using Linear.Web.Features.Sprints.RemoveIssue
+@using Linear.Web.Features.Sprints.Start
+@using Linear.Web.Features.Sprints.Update
+@using Linear.Web.Features.Teams.Contracts
+@using Linear.Web.Features.Teams.GetByKey
+
+@inject GetTeamByKeyHandler GetTeam
+@inject GetSprintByIdHandler GetSprint
+@inject StartSprintHandler StartSprint
+@inject CompleteSprintHandler CompleteSprint
+@inject CancelSprintHandler CancelSprint
+@inject RemoveSprintIssueHandler RemoveIssue
+@inject IDialogService DialogService
+@inject ISnackbar Snackbar
+@inject NavigationManager Navigation
+
+<PageTitle>@(_sprint?.Name ?? "Sprint") · Linear</PageTitle>
+
+@if (_loading)
+{
+    <MudSkeleton Height="320px" />
+}
+else if (_error is not null)
+{
+    <MudAlert Severity="Severity.Error" Dense="true" Variant="Variant.Outlined">
+        @_error.Description
+    </MudAlert>
+}
+else if (_sprint is not null)
+{
+    <MudStack Spacing="3">
+        <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween">
+            <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                <MudIconButton Icon="@Icons.Material.Rounded.ArrowBack"
+                               Size="Size.Small"
+                               aria-label="Volver a sprints"
+                               Href="@($"/teams/{Key}/sprints")" />
+                <MudText Typo="Typo.h3">@_sprint.Name</MudText>
+                <MudChip T="string"
+                         Size="Size.Small"
+                         Variant="Variant.Text"
+                         Color="@SprintStatusLabel.ColorFor(Status)">
+                    @SprintStatusLabel.For(_sprint.Status)
+                </MudChip>
+            </MudStack>
+
+            <MudStack Row="true" Spacing="1" AlignItems="AlignItems.Center">
+                @if (Status == SprintStatus.Planned)
+                {
+                    <MudButton Variant="Variant.Filled"
+                               Color="Color.Primary"
+                               Size="Size.Small"
+                               StartIcon="@Icons.Material.Rounded.PlayArrow"
+                               Disabled="_busy"
+                               OnClick="StartAsync">
+                        Iniciar
+                    </MudButton>
+                }
+                else if (Status == SprintStatus.Active)
+                {
+                    <MudButton Variant="Variant.Filled"
+                               Color="Color.Success"
+                               Size="Size.Small"
+                               StartIcon="@Icons.Material.Rounded.CheckCircle"
+                               Disabled="_busy"
+                               OnClick="CompleteAsync">
+                        Completar
+                    </MudButton>
+                }
+
+                @if (!IsClosed)
+                {
+                    <MudMenu Icon="@Icons.Material.Rounded.MoreHoriz" Size="Size.Small" AriaLabel="Más acciones">
+                        <MudMenuItem Icon="@Icons.Material.Rounded.Edit" OnClick="EditAsync">
+                            Editar
+                        </MudMenuItem>
+                        <MudMenuItem Icon="@Icons.Material.Rounded.Cancel" OnClick="CancelSprintAsync">
+                            Cancelar sprint
+                        </MudMenuItem>
+                    </MudMenu>
+                }
+            </MudStack>
+        </MudStack>
+
+        @if (_sprint.Goal is { Length: > 0 } goal)
+        {
+            <MudText Typo="Typo.body2" Color="Color.Secondary">@goal</MudText>
+        }
+
+        <MudStack Row="true" Spacing="4" AlignItems="AlignItems.Center" Class="sprint-summary">
+            <MudText Typo="Typo.caption" Color="Color.Secondary">
+                @_sprint.StartDate.ToString("dd/MM/yyyy") — @_sprint.EndDate.ToString("dd/MM/yyyy")
+            </MudText>
+            <div class="sprint-metrics">
+                <span class="sprint-metric">
+                    <strong>@_sprint.Metrics.Total</strong> total
+                </span>
+                <span class="sprint-metric">
+                    <strong>@_sprint.Metrics.Completed</strong> completados
+                </span>
+                <span class="sprint-metric">
+                    <strong>@_sprint.Metrics.Remaining</strong> pendientes
+                </span>
+                <span class="sprint-metric">
+                    <strong>@_sprint.Metrics.CompletionPercentage%</strong> del sprint
+                </span>
+            </div>
+        </MudStack>
+
+        <MudProgressLinear Value="_sprint.Metrics.CompletionPercentage"
+                           Color="Color.Primary"
+                           Rounded="true"
+                           Size="Size.Small" />
+
+        @if (_sprint.Issues.Count == 0)
+        {
+            <MudPaper Outlined="true" Class="pa-8">
+                <MudStack AlignItems="AlignItems.Center" Spacing="2">
+                    <MudIcon Icon="@Icons.Material.Rounded.List" Size="Size.Large" Color="Color.Secondary" />
+                    <MudText Typo="Typo.h4">Sin issues en este sprint</MudText>
+                    <MudText Typo="Typo.body2" Color="Color.Secondary" Align="Align.Center">
+                        Los issues se suman al sprint desde el detalle de cada issue.
+                    </MudText>
+                </MudStack>
+            </MudPaper>
+        }
+        else
+        {
+            <div class="sprint-board">
+                @foreach (var column in SprintStatusLabel.BoardColumns)
+                {
+                    var issues = IssuesFor(column);
+
+                    <section class="board-column">
+                        <header class="board-column-header">
+                            <MudIcon Icon="@IssueStatusLabel.IconFor(column)"
+                                     Color="@IssueStatusLabel.ColorFor(column)"
+                                     Size="Size.Small" />
+                            <MudText Typo="Typo.body2" Class="board-column-title">
+                                @IssueStatusLabel.For(column)
+                            </MudText>
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">@issues.Count</MudText>
+                        </header>
+
+                        @foreach (var issue in issues)
+                        {
+                            <article class="board-card" @key="issue.Id">
+                                <div class="board-card-head">
+                                    <span class="board-card-identifier"
+                                          @onclick="() => OpenIssue(issue.Identifier)">
+                                        @issue.Identifier
+                                    </span>
+                                    @if (!IsClosed)
+                                    {
+                                        <MudIconButton Icon="@Icons.Material.Rounded.Close"
+                                                       Size="Size.Small"
+                                                       aria-label="Quitar del sprint"
+                                                       Disabled="_busy"
+                                                       OnClick="() => RemoveFromSprintAsync(issue)" />
+                                    }
+                                </div>
+
+                                <div class="board-card-title" @onclick="() => OpenIssue(issue.Identifier)">
+                                    @issue.Title
+                                </div>
+
+                                <div class="board-card-foot">
+                                    <IssuePriorityMark Priority="ParsePriority(issue.Priority)" ShowLabel="false" />
+                                    @foreach (var label in issue.Labels)
+                                    {
+                                        <LabelChip Label="label" />
+                                    }
+                                    @if (issue.Estimate is { } estimate)
+                                    {
+                                        <span class="board-card-estimate">@estimate</span>
+                                    }
+                                    @if (issue.Assignee is { } assignee)
+                                    {
+                                        <UserAvatar Name="@assignee.Name" AvatarUrl="@assignee.AvatarUrl" />
+                                    }
+                                </div>
+                            </article>
+                        }
+                    </section>
+                }
+            </div>
+
+            @* Ningún issue del sprint desaparece sin dejar rastro: los cancelados no son
+               una columna del tablero, así que se cuentan acá abajo. *@
+            @if (OffBoardCount > 0)
+            {
+                <MudText Typo="Typo.caption" Color="Color.Secondary">
+                    @OffBoardCount @(OffBoardCount == 1 ? "issue cancelado" : "issues cancelados")
+                    en este sprint, fuera del tablero.
+                </MudText>
+            }
+        }
+    </MudStack>
+}
+
+@code {
+    private readonly CancellationTokenSource _cancellation = new();
+
+    [Parameter]
+    public string Key { get; set; } = string.Empty;
+
+    [Parameter]
+    public Guid SprintId { get; set; }
+
+    private TeamResponse? _team;
+    private SprintResponse? _sprint;
+    private Error? _error;
+    private bool _loading = true;
+    private bool _busy;
+
+    private SprintStatus Status => SprintStatusLabel.Parse(_sprint?.Status ?? string.Empty);
+
+    private bool IsClosed => Status is SprintStatus.Completed or SprintStatus.Canceled;
+
+    /// <summary>Issues del sprint que ninguna columna del tablero muestra.</summary>
+    private int OffBoardCount => _sprint is null
+        ? 0
+        : _sprint.Issues.Count(issue => ParseStatus(issue.Status) == IssueStatus.Canceled);
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (_sprint?.Id != SprintId || _team?.Key != Key)
+        {
+            await LoadAsync();
+        }
+    }
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        _error = null;
+        StateHasChanged();
+
+        var team = await GetTeam.HandleAsync(Key, _cancellation.Token);
+
+        if (team.IsFailure)
+        {
+            _error = team.Error;
+            _loading = false;
+            StateHasChanged();
+            return;
+        }
+
+        var sprint = await GetSprint.HandleAsync(
+            new GetSprintByIdRequest { Key = Key, SprintId = SprintId },
+            _cancellation.Token);
+
+        if (sprint.IsFailure)
+        {
+            _error = sprint.Error;
+            _loading = false;
+            StateHasChanged();
+            return;
+        }
+
+        _team = team.Value;
+        _sprint = sprint.Value;
+
+        _loading = false;
+        StateHasChanged();
+    }
+
+    /// <summary>
+    /// Issues de una columna. Backlog se dibuja junto a Todo: las dos cosas significan que
+    /// el trabajo todavía no arrancó, y el tablero de un sprint no distingue entre ambas.
+    /// </summary>
+    private IReadOnlyList<IssueSummaryResponse> IssuesFor(IssueStatus column)
+    {
+        var statuses = column == IssueStatus.Todo
+            ? new[] { IssueStatus.Todo, IssueStatus.Backlog }
+            : [column];
+
+        return _sprint!.Issues
+            .Where(issue => statuses.Contains(ParseStatus(issue.Status)))
+            .ToArray();
+    }
+
+    private Task StartAsync() =>
+        RunAsync(
+            () => StartSprint.HandleAsync(
+                new StartSprintRequest { Key = Key, SprintId = SprintId }, _cancellation.Token),
+            "Sprint iniciado.");
+
+    private async Task CompleteAsync()
+    {
+        var pending = _sprint!.Metrics.Remaining;
+
+        var message = pending == 0
+            ? "Se va a cerrar el sprint. No se puede reabrir."
+            : $"Quedan {pending} issues sin completar. Van a seguir en el sprint como registro de lo que pasó. No se puede reabrir.";
+
+        var confirmed = await DialogService.ShowMessageBoxAsync(
+            "Completar sprint", message, yesText: "Completar", cancelText: "Cancelar");
+
+        if (confirmed != true)
+        {
+            return;
+        }
+
+        await RunAsync(
+            () => CompleteSprint.HandleAsync(
+                new CompleteSprintRequest { Key = Key, SprintId = SprintId }, _cancellation.Token),
+            "Sprint completado.");
+    }
+
+    private async Task CancelSprintAsync()
+    {
+        var confirmed = await DialogService.ShowMessageBoxAsync(
+            "Cancelar sprint",
+            $"«{_sprint!.Name}» se va a cancelar. Los issues quedan en el sprint, pero ya no se puede modificar.",
+            yesText: "Cancelar sprint",
+            cancelText: "Volver");
+
+        if (confirmed != true)
+        {
+            return;
+        }
+
+        await RunAsync(
+            () => CancelSprint.HandleAsync(
+                new CancelSprintRequest { Key = Key, SprintId = SprintId }, _cancellation.Token),
+            "Sprint cancelado.");
+    }
+
+    private Task RemoveFromSprintAsync(IssueSummaryResponse issue) =>
+        RunAsync(
+            () => RemoveIssue.HandleAsync(
+                new RemoveSprintIssueRequest { Key = Key, SprintId = SprintId, Identifier = issue.Identifier },
+                _cancellation.Token),
+            $"{issue.Identifier} salió del sprint.");
+
+    private async Task EditAsync()
+    {
+        var summary = new SprintSummaryResponse(
+            _sprint!.Id,
+            _sprint.Name,
+            _sprint.Goal,
+            _sprint.StartDate,
+            _sprint.EndDate,
+            _sprint.Status,
+            _sprint.Metrics,
+            _sprint.CreatedAt,
+            _sprint.CompletedAt);
+
+        var parameters = new DialogParameters<SprintDialog>
+        {
+            { dialog => dialog.TeamKey, Key },
+            { dialog => dialog.Existing, summary }
+        };
+
+        var dialog = await DialogService.ShowAsync<SprintDialog>("Editar sprint", parameters);
+        var result = await dialog.Result;
+
+        if (result is { Canceled: false })
+        {
+            await LoadAsync();
+        }
+    }
+
+    private async Task RunAsync(Func<Task<Result<SprintResponse>>> operation, string successMessage)
+    {
+        _busy = true;
+        StateHasChanged();
+
+        var result = await operation();
+
+        _busy = false;
+
+        if (result.IsFailure)
+        {
+            Snackbar.Add(result.Error.Description, Severity.Error);
+            StateHasChanged();
+            return;
+        }
+
+        _sprint = result.Value;
+        Snackbar.Add(successMessage, Severity.Success);
+        StateHasChanged();
+    }
+
+    private void OpenIssue(string identifier) => Navigation.NavigateTo($"/teams/{Key}/issues/{identifier}");
+
+    private static IssueStatus ParseStatus(string status) =>
+        Enum.TryParse<IssueStatus>(status, out var parsed) ? parsed : IssueStatus.Backlog;
+
+    private static IssuePriority ParsePriority(string priority) =>
+        Enum.TryParse<IssuePriority>(priority, out var parsed) ? parsed : IssuePriority.None;
+
+    public void Dispose()
+    {
+        _cancellation.Cancel();
+        _cancellation.Dispose();
+    }
+}

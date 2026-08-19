@@ -101,11 +101,25 @@ public sealed class AuthorizationPolicyTests : IAsyncLifetime
         await AuthenticationScenario.CreateUserAsync(_factory, "ana@linear.dev");
         using var client = await AuthenticationScenario.SignInAsync(_factory, "ana@linear.dev");
 
-        using var home = await client.GetAsync("/", CancellationToken.None);
+        using var teams = await client.GetAsync("/teams", CancellationToken.None);
         using var settings = await client.GetAsync("/settings", CancellationToken.None);
 
-        Assert.Equal(HttpStatusCode.OK, home.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, teams.StatusCode);
         Assert.Equal(HttpStatusCode.OK, settings.StatusCode);
+    }
+
+    [Fact]
+    public async Task TheRootPathRedirectsToTeams()
+    {
+        // La lista es la pantalla de inicio: "/" no renderiza nada propio, redirige a
+        // "/teams" en lugar de mostrar un panel intermedio.
+        await AuthenticationScenario.CreateUserAsync(_factory, "ana@linear.dev");
+        using var client = await AuthenticationScenario.SignInAsync(_factory, "ana@linear.dev");
+
+        using var response = await client.GetAsync("/", CancellationToken.None);
+
+        Assert.Equal(HttpStatusCode.Found, response.StatusCode);
+        Assert.Equal("/teams", AuthenticationScenario.RedirectPath(response));
     }
 
 

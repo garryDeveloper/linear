@@ -16,7 +16,7 @@
 
 <PageTitle>Labels · Linear</PageTitle>
 
-<TeamPageHeader Team="_team" TeamKey="@Key" ActiveTab="labels" />
+<TeamPageHeader Team="_team" TeamKey="@Key" />
 
 @if (_loading)
 {
@@ -59,7 +59,7 @@ else
         else
         {
             <MudPaper Outlined="true">
-                <MudTable Items="_labels" Dense="true" Hover="true" Elevation="0">
+                <MudTable Items="_labels" Dense="true" Hover="true" Elevation="0" Class="linear-table">
                     <HeaderContent>
                         <MudTh>Label</MudTh>
                         <MudTh>Descripción</MudTh>

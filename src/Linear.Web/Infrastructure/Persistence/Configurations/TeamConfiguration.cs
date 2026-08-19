@@ -40,6 +40,10 @@ public sealed class TeamConfiguration : IEntityTypeConfiguration<Team>
         builder.Property(team => team.CreatedAt).IsRequired();
         builder.Property(team => team.UpdatedAt).IsRequired();
 
+        builder.Property(team => team.LastIssueNumber)
+            .HasDefaultValue(0)
+            .IsRequired();
+
         builder.HasMany(team => team.Members)
             .WithOne()
             .HasForeignKey(member => member.TeamId)

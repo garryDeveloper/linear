@@ -16,7 +16,7 @@
 
 <PageTitle>Miembros · Linear</PageTitle>
 
-<TeamPageHeader Team="_team" TeamKey="@Key" ActiveTab="members" />
+<TeamPageHeader Team="_team" TeamKey="@Key" />
 
 @if (_loading)
 {
@@ -35,8 +35,16 @@ else if (_team is not null)
         {
             <MudPaper Outlined="true" Class="pa-4">
                 <MudText Typo="Typo.h4" Class="mb-3">Agregar miembro</MudText>
-                <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Center">
+                @* AlignItems.Start y no Center: el HelperText del email hace que ese campo
+                   sea más alto que el select y el botón, así que centrar por altura total
+                   dejaba el botón más abajo que la línea de los inputs. Alineando arriba,
+                   las tres cajas deberían arrancar en la misma línea — pero el propio MudBlazor
+                   le suma a los outlined+dense un margin-top:8px (pensado para cuando el campo
+                   va apilado en una columna), que ni el Select ni el botón tienen. La clase
+                   add-member-email-field anula ese margen puntualmente (ver app.css). *@
+                <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Start">
                     <MudTextField @bind-Value="_newMemberEmail"
+                                  Class="add-member-email-field"
                                   Label="Email"
                                   Variant="Variant.Outlined"
                                   Margin="Margin.Dense"
@@ -64,7 +72,7 @@ else if (_team is not null)
         }
 
         <MudPaper Outlined="true">
-            <MudTable Items="_team.Members" Dense="true" Hover="true" Elevation="0">
+            <MudTable Items="_team.Members" Dense="true" Hover="true" Elevation="0" Class="linear-table">
                 <HeaderContent>
                     <MudTh>Miembro</MudTh>
                     <MudTh>Rol</MudTh>
@@ -99,9 +107,9 @@ else if (_team is not null)
                         }
                         else
                         {
-                            <MudChip T="string" Size="Size.Small" Variant="Variant.Text">
+                            <MudText Typo="Typo.body2" Color="Color.Secondary">
                                 @TeamRoleLabel.For(context.Role)
-                            </MudChip>
+                            </MudText>
                         }
                     </MudTd>
                     <MudTd DataLabel="Desde">

@@ -1,13 +1,17 @@
 @inject ThemeState ThemeState
 
-<MudAppBar Elevation="0" Dense="true" Class="border-b">
+<MudAppBar Elevation="0" Dense="true" Class="border-b app-header">
     <MudIconButton Icon="@Icons.Material.Rounded.Menu"
                    Size="Size.Small"
                    Edge="Edge.Start"
                    aria-label="Mostrar u ocultar la navegación"
                    OnClick="OnToggleSidebar" />
 
-    <MudText Typo="Typo.h6" Class="ml-2">Linear</MudText>
+    <MudLink Href="/teams" Underline="Underline.None" Class="app-wordmark ml-2 mr-3">
+        <MudText Typo="Typo.subtitle2">Linear</MudText>
+    </MudLink>
+
+    <TeamSelector />
 
     <MudSpacer />
 

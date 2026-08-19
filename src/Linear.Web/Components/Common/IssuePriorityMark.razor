@@ -1,0 +1,22 @@
+@using Linear.Domain.Issues
+
+<MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1" Class="@Class">
+    <MudIcon Icon="@IssuePriorityLabel.IconFor(Priority)"
+             Color="@IssuePriorityLabel.ColorFor(Priority)"
+             Size="Size.Small" />
+    @if (ShowLabel)
+    {
+        <MudText Typo="Typo.body2">@IssuePriorityLabel.For(Priority)</MudText>
+    }
+</MudStack>
+
+@code {
+    [Parameter, EditorRequired]
+    public required IssuePriority Priority { get; set; }
+
+    [Parameter]
+    public bool ShowLabel { get; set; } = true;
+
+    [Parameter]
+    public string Class { get; set; } = string.Empty;
+}

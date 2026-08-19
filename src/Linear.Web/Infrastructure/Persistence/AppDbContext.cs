@@ -1,6 +1,9 @@
 using System.Reflection;
 
+using Linear.Domain.Comments;
+using Linear.Domain.Issues;
 using Linear.Domain.Labels;
+using Linear.Domain.Sprints;
 using Linear.Domain.Teams;
 using Linear.Domain.Users;
 
@@ -22,6 +25,14 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<Team> Teams => Set<Team>();
 
     public DbSet<Label> Labels => Set<Label>();
+
+    public DbSet<Issue> Issues => Set<Issue>();
+
+    public DbSet<IssueLabel> IssueLabels => Set<IssueLabel>();
+
+    public DbSet<Comment> Comments => Set<Comment>();
+
+    public DbSet<Sprint> Sprints => Set<Sprint>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

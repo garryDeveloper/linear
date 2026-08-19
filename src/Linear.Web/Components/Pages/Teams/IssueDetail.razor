@@ -1,0 +1,468 @@
+@page "/teams/{Key}/issues/{Identifier}"
+@implements IDisposable
+
+@using Linear.Domain.Issues
+@using Linear.Domain.Teams
+@using Linear.Web.Features.Issues.AddLabel
+@using Linear.Web.Features.Issues.Archive
+@using Linear.Web.Features.Issues.AssignUser
+@using Linear.Web.Features.Issues.ChangeEstimate
+@using Linear.Web.Features.Issues.ChangePriority
+@using Linear.Web.Features.Issues.ChangeStatus
+@using Linear.Web.Features.Issues.Contracts
+@using Linear.Web.Features.Issues.Delete
+@using Linear.Web.Features.Issues.GetByIdentifier
+@using Linear.Web.Features.Issues.RemoveLabel
+@using Linear.Web.Features.Issues.Update
+@using Linear.Domain.Sprints
+@using Linear.Web.Features.Sprints.AddIssue
+@using Linear.Web.Features.Sprints.Contracts
+@using Linear.Web.Features.Sprints.List
+@using Linear.Web.Features.Sprints.RemoveIssue
+@using Linear.Web.Features.Teams.Contracts
+@using Linear.Web.Features.Teams.GetByKey
+@using Linear.Web.Shared.Pagination
+
+@inject GetTeamByKeyHandler GetTeam
+@inject GetIssueByIdentifierHandler GetIssue
+@inject UpdateIssueHandler UpdateIssue
+@inject ChangeIssueStatusHandler ChangeStatus
+@inject ChangeIssuePriorityHandler ChangePriority
+@inject AssignIssueUserHandler AssignUser
+@inject ChangeIssueEstimateHandler ChangeEstimate
+@inject AddIssueLabelHandler AddLabel
+@inject RemoveIssueLabelHandler RemoveLabel
+@inject ArchiveIssueHandler ArchiveIssue
+@inject DeleteIssueHandler DeleteIssue
+@inject ListSprintsHandler ListSprints
+@inject AddSprintIssueHandler AddToSprint
+@inject RemoveSprintIssueHandler RemoveFromSprint
+@inject IDialogService DialogService
+@inject ISnackbar Snackbar
+@inject NavigationManager Navigation
+
+<PageTitle>@(_issue?.Identifier ?? Identifier) · Linear</PageTitle>
+
+@if (_loading)
+{
+    <MudSkeleton Height="320px" />
+}
+else if (_error is not null)
+{
+    <MudAlert Severity="Severity.Error" Dense="true" Variant="Variant.Outlined">
+        @_error.Description
+    </MudAlert>
+}
+else if (_issue is not null)
+{
+    <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween" Class="mb-4">
+        <MudText Typo="Typo.caption" Color="Color.Secondary">
+            @Key / @_issue.Identifier
+            @if (_issue.ArchivedAt is not null)
+            {
+                <MudChip T="string" Size="Size.Small" Variant="Variant.Text" Class="ml-2">Archivado</MudChip>
+            }
+        </MudText>
+        <MudMenu Icon="@Icons.Material.Rounded.MoreHoriz" Size="Size.Small" AriaLabel="Más acciones">
+            @if (_issue.ArchivedAt is null)
+            {
+                <MudMenuItem Icon="@Icons.Material.Rounded.Archive" OnClick="ArchiveAsync">
+                    Archivar
+                </MudMenuItem>
+            }
+            @if (CanDelete)
+            {
+                <MudMenuItem Icon="@Icons.Material.Rounded.DeleteOutline" OnClick="DeleteAsync">
+                    Eliminar
+                </MudMenuItem>
+            }
+        </MudMenu>
+    </MudStack>
+
+    <div class="issue-detail">
+        <div class="issue-detail-main">
+            <MudTextField T="string" Value="_title"
+                          ValueChanged="OnTitleChanged"
+                          Immediate="false"
+                          Variant="Variant.Text"
+                          Class="issue-title-field"
+                          MaxLength="@Issue.MaxTitleLength" />
+
+            <MudTextField T="string" Value="_description"
+                          ValueChanged="OnDescriptionChanged"
+                          Immediate="false"
+                          Variant="Variant.Text"
+                          Placeholder="Agregar una descripción…"
+                          Lines="8" />
+
+            @* La conversación se carga sola, aparte del issue: es un listado paginado con
+               su propio ciclo de vida, y no tiene por qué demorar el detalle. *@
+            <IssueComments Key="@Key" Identifier="@_issue.Identifier" />
+        </div>
+
+        <div class="issue-detail-panel">
+            <div class="issue-property">
+                <MudText Typo="Typo.caption" Color="Color.Secondary">Estado</MudText>
+                <MudSelect T="IssueStatus" Value="ParseStatus(_issue.Status)" ValueChanged="OnStatusChanged"
+                           Variant="Variant.Text" Margin="Margin.Dense" Dense="true">
+                    @foreach (var status in Enum.GetValues<IssueStatus>())
+                    {
+                        <MudSelectItem T="IssueStatus" Value="status">
+                            <IssueStatusMark Status="status" />
+                        </MudSelectItem>
+                    }
+                </MudSelect>
+            </div>
+
+            <div class="issue-property">
+                <MudText Typo="Typo.caption" Color="Color.Secondary">Prioridad</MudText>
+                <MudSelect T="IssuePriority" Value="ParsePriority(_issue.Priority)" ValueChanged="OnPriorityChanged"
+                           Variant="Variant.Text" Margin="Margin.Dense" Dense="true">
+                    @foreach (var priority in Enum.GetValues<IssuePriority>())
+                    {
+                        <MudSelectItem T="IssuePriority" Value="priority">
+                            <IssuePriorityMark Priority="priority" />
+                        </MudSelectItem>
+                    }
+                </MudSelect>
+            </div>
+
+            <div class="issue-property">
+                <MudText Typo="Typo.caption" Color="Color.Secondary">Responsable</MudText>
+                <MudSelect T="Guid?" Value="_issue.Assignee?.Id" ValueChanged="OnAssigneeChanged"
+                           Variant="Variant.Text" Margin="Margin.Dense" Dense="true" Clearable="true">
+                    @foreach (var member in _team!.Members)
+                    {
+                        <MudSelectItem T="Guid?" Value="member.UserId">@member.Name</MudSelectItem>
+                    }
+                </MudSelect>
+            </div>
+
+            @* Solo se ofrecen los sprints abiertos: sumar trabajo a uno ya cerrado
+               reescribiría el registro de lo que pasó en ese período. El sprint actual se
+               incluye aunque esté cerrado, para no mostrar el campo vacío. *@
+            <div class="issue-property">
+                <MudText Typo="Typo.caption" Color="Color.Secondary">Sprint</MudText>
+                <MudSelect T="Guid?" Value="_issue.Sprint?.Id" ValueChanged="OnSprintChanged"
+                           Variant="Variant.Text" Margin="Margin.Dense" Dense="true" Clearable="true"
+                           Placeholder="Sin asignar">
+                    @foreach (var sprint in _assignableSprints)
+                    {
+                        <MudSelectItem T="Guid?" Value="sprint.Id">@sprint.Name</MudSelectItem>
+                    }
+                </MudSelect>
+            </div>
+
+            <div class="issue-property">
+                <MudText Typo="Typo.caption" Color="Color.Secondary">Labels</MudText>
+                <LabelSelector TeamKey="@Key" SelectedIds="_labelIds" SelectedIdsChanged="OnLabelsChangedAsync" />
+            </div>
+
+            <div class="issue-property">
+                <MudText Typo="Typo.caption" Color="Color.Secondary">Estimate</MudText>
+                <MudNumericField T="int?" Value="_issue.Estimate" ValueChanged="OnEstimateChanged"
+                                 Immediate="false" Variant="Variant.Text" Margin="Margin.Dense"
+                                 Min="Issue.MinEstimate" Max="Issue.MaxEstimate" />
+            </div>
+
+            <MudDivider Class="my-2" />
+
+            <MudText Typo="Typo.caption" Color="Color.Secondary">
+                Creado por @_issue.CreatedBy.Name
+            </MudText>
+            <MudText Typo="Typo.caption" Color="Color.Secondary">
+                @_issue.CreatedAt.ToLocalTime().ToString("dd/MM/yyyy")
+            </MudText>
+        </div>
+    </div>
+}
+
+@code {
+    private readonly CancellationTokenSource _cancellation = new();
+
+    [Parameter]
+    public string Key { get; set; } = string.Empty;
+
+    [Parameter]
+    public string Identifier { get; set; } = string.Empty;
+
+    private TeamResponse? _team;
+    private IssueResponse? _issue;
+    private string _title = string.Empty;
+    private string? _description;
+    private IReadOnlyCollection<Guid> _labelIds = [];
+    private IReadOnlyList<SprintSummaryResponse> _assignableSprints = [];
+    private Error? _error;
+    private bool _loading = true;
+
+    private bool CanDelete =>
+        Enum.TryParse<TeamRole>(_team?.Role, out var role) && role >= TeamRole.Admin;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (_issue?.Identifier != Identifier || _team?.Key != Key)
+        {
+            await LoadAsync();
+        }
+    }
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        _error = null;
+        StateHasChanged();
+
+        var team = await GetTeam.HandleAsync(Key, _cancellation.Token);
+
+        if (team.IsFailure)
+        {
+            _error = team.Error;
+            _loading = false;
+            StateHasChanged();
+            return;
+        }
+
+        var issue = await GetIssue.HandleAsync(
+            new GetIssueByIdentifierRequest { Key = Key, Identifier = Identifier },
+            _cancellation.Token);
+
+        if (issue.IsFailure)
+        {
+            _error = issue.Error;
+            _loading = false;
+            StateHasChanged();
+            return;
+        }
+
+        _team = team.Value;
+        ApplyIssue(issue.Value);
+
+        await LoadAssignableSprintsAsync();
+
+        _loading = false;
+        StateHasChanged();
+    }
+
+    private async Task LoadAssignableSprintsAsync()
+    {
+        var sprints = await ListSprints.HandleAsync(
+            new ListSprintsRequest { Key = Key, PageSize = PageRequest.MaxPageSize },
+            _cancellation.Token);
+
+        if (sprints.IsFailure)
+        {
+            return;
+        }
+
+        _assignableSprints = sprints.Value.Items
+            .Where(sprint =>
+                SprintStatusLabel.Parse(sprint.Status) is SprintStatus.Planned or SprintStatus.Active ||
+                sprint.Id == _issue?.Sprint?.Id)
+            .ToArray();
+    }
+
+    private async Task OnSprintChanged(Guid? sprintId)
+    {
+        var current = _issue!.Sprint?.Id;
+
+        if (current == sprintId)
+        {
+            return;
+        }
+
+        // Mover de sprint es sacar de uno y poner en otro. Asignar directamente ya reasigna
+        // el issue, así que solo hace falta el paso de remover cuando se lo deja sin sprint.
+        var result = sprintId is { } target
+            ? await AddToSprint.HandleAsync(
+                new AddSprintIssueRequest { Key = Key, SprintId = target, Identifier = Identifier },
+                _cancellation.Token)
+            : await RemoveFromSprint.HandleAsync(
+                new RemoveSprintIssueRequest { Key = Key, SprintId = current!.Value, Identifier = Identifier },
+                _cancellation.Token);
+
+        if (result.IsFailure)
+        {
+            Snackbar.Add(result.Error.Description, Severity.Error);
+            return;
+        }
+
+        // Las operaciones de sprint devuelven el sprint, no el issue: se recarga el issue
+        // para que el panel quede consistente con lo que quedó guardado.
+        var refreshed = await GetIssue.HandleAsync(
+            new GetIssueByIdentifierRequest { Key = Key, Identifier = Identifier },
+            _cancellation.Token);
+
+        if (refreshed.IsSuccess)
+        {
+            ApplyIssue(refreshed.Value);
+        }
+
+        StateHasChanged();
+    }
+
+    private void ApplyIssue(IssueResponse issue)
+    {
+        _issue = issue;
+        _title = issue.Title;
+        _description = issue.Description;
+        _labelIds = issue.Labels.Select(label => label.Id).ToArray();
+    }
+
+    private Task OnTitleChanged(string value)
+    {
+        _title = value;
+        return SaveContentAsync();
+    }
+
+    private Task OnDescriptionChanged(string? value)
+    {
+        _description = value;
+        return SaveContentAsync();
+    }
+
+    private async Task SaveContentAsync()
+    {
+        var result = await UpdateIssue.HandleAsync(
+            new UpdateIssueRequest { Key = Key, Identifier = Identifier, Title = _title, Description = _description },
+            _cancellation.Token);
+
+        HandleResult(result, showToast: false);
+    }
+
+    private async Task OnStatusChanged(IssueStatus status)
+    {
+        var result = await ChangeStatus.HandleAsync(
+            new ChangeIssueStatusRequest { Key = Key, Identifier = Identifier, Status = status },
+            _cancellation.Token);
+
+        HandleResult(result, showToast: false);
+    }
+
+    private async Task OnPriorityChanged(IssuePriority priority)
+    {
+        var result = await ChangePriority.HandleAsync(
+            new ChangeIssuePriorityRequest { Key = Key, Identifier = Identifier, Priority = priority },
+            _cancellation.Token);
+
+        HandleResult(result, showToast: false);
+    }
+
+    private async Task OnAssigneeChanged(Guid? assigneeId)
+    {
+        var result = await AssignUser.HandleAsync(
+            new AssignIssueUserRequest { Key = Key, Identifier = Identifier, AssigneeId = assigneeId },
+            _cancellation.Token);
+
+        HandleResult(result, showToast: false);
+    }
+
+    private async Task OnEstimateChanged(int? estimate)
+    {
+        var result = await ChangeEstimate.HandleAsync(
+            new ChangeIssueEstimateRequest { Key = Key, Identifier = Identifier, Estimate = estimate },
+            _cancellation.Token);
+
+        HandleResult(result, showToast: false);
+    }
+
+    private async Task OnLabelsChangedAsync(IReadOnlyCollection<Guid> newIds)
+    {
+        var added = newIds.Except(_labelIds).ToArray();
+        var removed = _labelIds.Except(newIds).ToArray();
+
+        foreach (var labelId in added)
+        {
+            var result = await AddLabel.HandleAsync(
+                new AddIssueLabelRequest { Key = Key, Identifier = Identifier, LabelId = labelId },
+                _cancellation.Token);
+
+            HandleResult(result, showToast: false);
+        }
+
+        foreach (var labelId in removed)
+        {
+            var result = await RemoveLabel.HandleAsync(
+                new RemoveIssueLabelRequest { Key = Key, Identifier = Identifier, LabelId = labelId },
+                _cancellation.Token);
+
+            HandleResult(result, showToast: false);
+        }
+    }
+
+    private async Task ArchiveAsync()
+    {
+        var confirmed = await DialogService.ShowMessageBoxAsync(
+            "Archivar issue",
+            $"«{_issue!.Title}» va a salir del listado activo. Podés encontrarlo igual buscando su identificador.",
+            yesText: "Archivar",
+            cancelText: "Cancelar");
+
+        if (confirmed != true)
+        {
+            return;
+        }
+
+        var result = await ArchiveIssue.HandleAsync(
+            new ArchiveIssueRequest { Key = Key, Identifier = Identifier },
+            _cancellation.Token);
+
+        HandleResult(result, showToast: true, successMessage: "Issue archivado.");
+    }
+
+    private async Task DeleteAsync()
+    {
+        var confirmed = await DialogService.ShowMessageBoxAsync(
+            "Eliminar issue",
+            $"Se va a eliminar «{_issue!.Title}» de forma definitiva. Esta acción no se puede deshacer.",
+            yesText: "Eliminar",
+            cancelText: "Cancelar");
+
+        if (confirmed != true)
+        {
+            return;
+        }
+
+        var result = await DeleteIssue.HandleAsync(
+            new DeleteIssueRequest { Key = Key, Identifier = Identifier },
+            _cancellation.Token);
+
+        if (result.IsFailure)
+        {
+            Snackbar.Add(result.Error.Description, Severity.Error);
+            return;
+        }
+
+        Snackbar.Add("Issue eliminado.", Severity.Success);
+        Navigation.NavigateTo($"/teams/{Key}/issues");
+    }
+
+    private void HandleResult(Result<IssueResponse> result, bool showToast, string? successMessage = null)
+    {
+        if (result.IsFailure)
+        {
+            Snackbar.Add(result.Error.Description, Severity.Error);
+            return;
+        }
+
+        ApplyIssue(result.Value);
+
+        if (showToast && successMessage is not null)
+        {
+            Snackbar.Add(successMessage, Severity.Success);
+        }
+
+        StateHasChanged();
+    }
+
+    private static IssueStatus ParseStatus(string status) =>
+        Enum.TryParse<IssueStatus>(status, out var parsed) ? parsed : IssueStatus.Backlog;
+
+    private static IssuePriority ParsePriority(string priority) =>
+        Enum.TryParse<IssuePriority>(priority, out var parsed) ? parsed : IssuePriority.None;
+
+    public void Dispose()
+    {
+        _cancellation.Cancel();
+        _cancellation.Dispose();
+    }
+}

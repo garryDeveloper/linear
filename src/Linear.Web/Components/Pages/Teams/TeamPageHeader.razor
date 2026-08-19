@@ -1,7 +1,8 @@
 @using Linear.Web.Features.Teams.Contracts
 
-@* Encabezado común a las pantallas de un equipo: identidad del equipo y navegación
-   entre sus secciones. Se muestra también mientras el equipo carga, para que la
+@* Identidad del equipo al tope de cada una de sus páginas. Ya no dibuja qué sección está
+   activa — eso lo resuelve AppSidebar con sus propios NavLink, para no repetir la misma
+   navegación en dos lugares. Se muestra también mientras el equipo carga, para que la
    página no salte cuando llegan los datos. *@
 <MudStack Spacing="1" Class="mb-4">
     <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
@@ -15,30 +16,6 @@
     {
         <MudText Typo="Typo.body2" Color="Color.Secondary">@Team.Description</MudText>
     }
-
-    <MudStack Row="true" Spacing="1" Class="mt-2">
-        <MudButton Href="@($"/teams/{TeamKey}/members")"
-                   Size="Size.Small"
-                   Variant="@(ActiveTab == "members" ? Variant.Filled : Variant.Text)"
-                   Color="@(ActiveTab == "members" ? Color.Primary : Color.Default)"
-                   StartIcon="@Icons.Material.Rounded.Group">
-            Miembros
-        </MudButton>
-        <MudButton Href="@($"/teams/{TeamKey}/labels")"
-                   Size="Size.Small"
-                   Variant="@(ActiveTab == "labels" ? Variant.Filled : Variant.Text)"
-                   Color="@(ActiveTab == "labels" ? Color.Primary : Color.Default)"
-                   StartIcon="@Icons.Material.Rounded.Label">
-            Labels
-        </MudButton>
-        <MudButton Href="@($"/teams/{TeamKey}/settings")"
-                   Size="Size.Small"
-                   Variant="@(ActiveTab == "settings" ? Variant.Filled : Variant.Text)"
-                   Color="@(ActiveTab == "settings" ? Color.Primary : Color.Default)"
-                   StartIcon="@Icons.Material.Rounded.Settings">
-            Configuración
-        </MudButton>
-    </MudStack>
 </MudStack>
 
 @code {
@@ -48,7 +25,4 @@
     /// <summary>Clave del equipo tomada de la ruta, disponible antes de que cargue.</summary>
     [Parameter]
     public string TeamKey { get; set; } = string.Empty;
-
-    [Parameter]
-    public string ActiveTab { get; set; } = string.Empty;
 }

@@ -1,0 +1,58 @@
+.comments {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+
+.comments-heading {
+    border-top: 1px solid var(--mud-palette-lines-default);
+    color: var(--mud-palette-text-secondary);
+    padding-top: 1rem;
+}
+
+.comments-empty {
+    font-size: 0.8125rem;
+}
+
+.comment {
+    display: grid;
+    gap: 0.625rem;
+    grid-template-columns: auto minmax(0, 1fr);
+}
+
+.comment-body {
+    min-width: 0;
+}
+
+.comment-meta {
+    align-items: center;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.375rem;
+    min-height: 1.75rem;
+}
+
+.comment-author {
+    font-weight: 600;
+}
+
+/* El menú de acciones se corre al extremo para que no empuje los metadatos. */
+.comment-actions {
+    margin-left: auto;
+}
+
+/* El contenido es Markdown sin interpretar (task 012): se muestra tal cual, respetando
+   saltos de línea y espacios, y cortando las palabras largas para que un enlace pegado
+   no desborde la columna. */
+.comment-content {
+    font-size: 0.8125rem;
+    line-height: 1.5;
+    overflow-wrap: anywhere;
+    white-space: pre-wrap;
+}
+
+.comment-composer {
+    display: flex;
+    flex-direction: column;
+    padding-top: 0.5rem;
+}

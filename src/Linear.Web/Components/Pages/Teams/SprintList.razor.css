@@ -1,0 +1,54 @@
+.sprint-row {
+    align-items: center;
+    cursor: pointer;
+    display: grid;
+    gap: 1rem;
+    grid-template-columns: minmax(0, 1fr) auto 12rem;
+    padding: 0.625rem 0.875rem;
+}
+
+.sprint-row:not(:first-child) {
+    border-top: 1px solid var(--mud-palette-lines-default);
+}
+
+.sprint-row:hover {
+    background-color: var(--mud-palette-action-default-hover);
+}
+
+.sprint-row-main {
+    min-width: 0;
+}
+
+.sprint-row-title {
+    align-items: center;
+    display: flex;
+    gap: 0.5rem;
+}
+
+.sprint-row-name {
+    font-weight: 600;
+}
+
+.sprint-row-goal {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.sprint-row-dates {
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+}
+
+.sprint-row-progress {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+}
+
+@media (max-width: 899.98px) {
+    .sprint-row {
+        grid-template-columns: minmax(0, 1fr);
+    }
+}

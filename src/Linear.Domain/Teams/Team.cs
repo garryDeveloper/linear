@@ -52,6 +52,18 @@ public sealed class Team
 
     public DateTimeOffset UpdatedAt { get; private set; }
 
+    /// <summary>
+    /// Último número de issue asignado en este equipo.
+    /// </summary>
+    /// <remarks>
+    /// Ningún método de <see cref="Team"/> lo modifica: es <c>IssueNumberSequence</c>, en
+    /// infraestructura, quien lo avanza con una sola sentencia SQL atómica
+    /// (<c>UPDATE ... RETURNING</c>), para que dos issues creados a la vez nunca reciban el
+    /// mismo número. Vive acá y no en <c>Issue</c> porque el número se reserva antes de que
+    /// el issue exista.
+    /// </remarks>
+    public int LastIssueNumber { get; private set; }
+
     public IReadOnlyList<TeamMember> Members => _members.AsReadOnly();
 
     /// <summary>

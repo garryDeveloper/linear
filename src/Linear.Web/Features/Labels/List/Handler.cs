@@ -1,5 +1,6 @@
 using Linear.Domain.Common;
 using Linear.Web.Features.Labels.Contracts;
+using Linear.Web.Features.Teams.Contracts;
 using Linear.Web.Infrastructure.Authorization;
 using Linear.Web.Infrastructure.Persistence;
 using Linear.Web.Shared.Pagination;
@@ -23,7 +24,7 @@ public sealed class ListLabelsHandler(
 
         await using var dbContext = await dbContextFactory.CreateDbContextAsync(cancellationToken);
 
-        var team = await TeamLabelAccess.ForReadingAsync(teamAccess, dbContext, request.Key, cancellationToken);
+        var team = await TeamSectionAccess.RequireMemberAsync(teamAccess, dbContext, request.Key, cancellationToken);
 
         if (team.IsFailure)
         {

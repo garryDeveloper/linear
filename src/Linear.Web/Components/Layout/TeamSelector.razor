@@ -7,42 +7,39 @@
 @inject ListTeamsHandler ListTeams
 @inject NavigationManager Navigation
 
-@* Permite saltar entre equipos sin volver al listado, que es la operación más frecuente
-   una vez que alguien pertenece a más de uno. *@
-<div class="px-2 pt-2">
-    @* Se usa el activador propio de MudMenu: con ActivatorContent, el botón tiene que
-       abrir el menú por su cuenta a través del MenuContext. *@
-    <MudMenu FullWidth="true"
-             Label="@(_current?.Name ?? "Equipos")"
-             Variant="Variant.Outlined"
-             Size="Size.Small"
-             EndIcon="@Icons.Material.Rounded.UnfoldMore"
-             AnchorOrigin="Origin.BottomLeft"
-             TransformOrigin="Origin.TopLeft"
-             Dense="true"
-             AriaLabel="Cambiar de equipo">
-        @if (_teams.Count == 0)
+@* Vive en el AppHeader: permite saltar entre equipos sin volver al listado, que es la
+   operación más frecuente una vez que alguien pertenece a más de uno. El disparador
+   muestra la clave del equipo activo — "WEB ▾" — y no el nombre completo, para quedar
+   compacto en la barra superior. *@
+<MudMenu Label="@(_current?.Key ?? "Equipos")"
+         Variant="Variant.Outlined"
+         Size="Size.Small"
+         EndIcon="@Icons.Material.Rounded.UnfoldMore"
+         AnchorOrigin="Origin.BottomLeft"
+         TransformOrigin="Origin.TopLeft"
+         Dense="true"
+         AriaLabel="Cambiar de equipo">
+    @if (_teams.Count == 0)
+    {
+        <MudMenuItem Disabled="true">Todavía no tenés equipos</MudMenuItem>
+    }
+    else
+    {
+        @foreach (var team in _teams)
         {
-            <MudMenuItem Disabled="true">Todavía no tenés equipos</MudMenuItem>
+            <MudMenuItem Href="@($"/teams/{team.Key}/members")">
+                <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                    <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined">@team.Key</MudChip>
+                    <MudText Typo="Typo.body2">@team.Name</MudText>
+                </MudStack>
+            </MudMenuItem>
         }
-        else
-        {
-            @foreach (var team in _teams)
-            {
-                <MudMenuItem Href="@($"/teams/{team.Key}/members")">
-                    <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
-                        <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined">@team.Key</MudChip>
-                        <MudText Typo="Typo.body2">@team.Name</MudText>
-                    </MudStack>
-                </MudMenuItem>
-            }
-        }
-        <MudDivider />
-        <MudMenuItem Href="/teams" Icon="@Icons.Material.Rounded.Groups">
-            Ver todos los equipos
-        </MudMenuItem>
-    </MudMenu>
-</div>
+    }
+    <MudDivider />
+    <MudMenuItem Href="/teams" Icon="@Icons.Material.Rounded.Groups">
+        Ver todos los equipos
+    </MudMenuItem>
+</MudMenu>
 
 @code {
     private readonly CancellationTokenSource _cancellation = new();
@@ -88,12 +85,11 @@
     /// </summary>
     private void UpdateCurrent()
     {
-        var path = Navigation.ToBaseRelativePath(Navigation.Uri);
-        var segments = path.Split('/', StringSplitOptions.RemoveEmptyEntries);
+        var key = TeamRoute.KeyFrom(Navigation.ToBaseRelativePath(Navigation.Uri));
 
-        _current = segments is ["teams", var key, ..]
-            ? _teams.FirstOrDefault(team => string.Equals(team.Key, key, StringComparison.OrdinalIgnoreCase))
-            : null;
+        _current = key is null
+            ? null
+            : _teams.FirstOrDefault(team => string.Equals(team.Key, key, StringComparison.OrdinalIgnoreCase));
     }
 
     public void Dispose()

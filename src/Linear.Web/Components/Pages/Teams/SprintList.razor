@@ -1,0 +1,210 @@
+@page "/teams/{Key}/sprints"
+@implements IDisposable
+
+@using Linear.Domain.Sprints
+@using Linear.Web.Features.Sprints.Contracts
+@using Linear.Web.Features.Sprints.List
+@using Linear.Web.Features.Teams.Contracts
+@using Linear.Web.Features.Teams.GetByKey
+@using Linear.Web.Shared.Pagination
+
+@inject GetTeamByKeyHandler GetTeam
+@inject ListSprintsHandler ListSprints
+@inject IDialogService DialogService
+@inject NavigationManager Navigation
+
+<PageTitle>Sprints · Linear</PageTitle>
+
+<TeamPageHeader Team="_team" TeamKey="@Key" />
+
+@if (_loading)
+{
+    <MudSkeleton Height="220px" />
+}
+else if (_error is not null)
+{
+    <MudAlert Severity="Severity.Error" Dense="true" Variant="Variant.Outlined">
+        @_error.Description
+    </MudAlert>
+}
+else if (_page is not null)
+{
+    <MudStack Spacing="4">
+        <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+            <MudText Typo="Typo.body2" Color="Color.Secondary">
+                @_page.TotalCount @(_page.TotalCount == 1 ? "sprint" : "sprints")
+            </MudText>
+            <MudButton Variant="Variant.Filled"
+                       Color="Color.Primary"
+                       Size="Size.Small"
+                       StartIcon="@Icons.Material.Rounded.Add"
+                       OnClick="() => OpenDialogAsync(null)">
+                Nuevo sprint
+            </MudButton>
+        </MudStack>
+
+        @if (_page.Items.Count == 0)
+        {
+            <MudPaper Outlined="true" Class="pa-8">
+                <MudStack AlignItems="AlignItems.Center" Spacing="2">
+                    <MudIcon Icon="@Icons.Material.Rounded.DateRange" Size="Size.Large" Color="Color.Secondary" />
+                    <MudText Typo="Typo.h4">Sin sprints todavía</MudText>
+                    <MudText Typo="Typo.body2" Color="Color.Secondary" Align="Align.Center">
+                        Un sprint agrupa el trabajo de un período acotado.
+                    </MudText>
+                    <MudButton Variant="Variant.Filled"
+                               Color="Color.Primary"
+                               Size="Size.Small"
+                               StartIcon="@Icons.Material.Rounded.Add"
+                               OnClick="() => OpenDialogAsync(null)">
+                        Crear sprint
+                    </MudButton>
+                </MudStack>
+            </MudPaper>
+        }
+        else
+        {
+            <MudPaper Outlined="true" Class="sprint-list">
+                @foreach (var sprint in _page.Items)
+                {
+                    <div class="sprint-row" @onclick="() => OpenSprint(sprint.Id)">
+                        <div class="sprint-row-main">
+                            <div class="sprint-row-title">
+                                <MudText Typo="Typo.body2" Class="sprint-row-name">@sprint.Name</MudText>
+                                <MudChip T="string"
+                                         Size="Size.Small"
+                                         Variant="Variant.Text"
+                                         Color="@SprintStatusLabel.ColorFor(SprintStatusLabel.Parse(sprint.Status))">
+                                    @SprintStatusLabel.For(sprint.Status)
+                                </MudChip>
+                            </div>
+                            @if (sprint.Goal is { Length: > 0 } goal)
+                            {
+                                <MudText Typo="Typo.caption" Color="Color.Secondary" Class="sprint-row-goal">
+                                    @goal
+                                </MudText>
+                            }
+                        </div>
+
+                        <MudText Typo="Typo.caption" Color="Color.Secondary" Class="sprint-row-dates">
+                            @sprint.StartDate.ToString("dd/MM/yyyy") — @sprint.EndDate.ToString("dd/MM/yyyy")
+                        </MudText>
+
+                        <div class="sprint-row-progress">
+                            <MudProgressLinear Value="sprint.Metrics.CompletionPercentage"
+                                               Color="Color.Primary"
+                                               Rounded="true"
+                                               Size="Size.Small" />
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                @sprint.Metrics.Completed/@sprint.Metrics.Total · @sprint.Metrics.CompletionPercentage%
+                            </MudText>
+                        </div>
+                    </div>
+                }
+            </MudPaper>
+        }
+
+        @if (_page.TotalPages > 1)
+        {
+            <MudPagination Count="_page.TotalPages"
+                           Selected="_currentPage"
+                           SelectedChanged="GoToPageAsync"
+                           Size="Size.Small" />
+        }
+    </MudStack>
+}
+
+@code {
+    private readonly CancellationTokenSource _cancellation = new();
+
+    [Parameter]
+    public string Key { get; set; } = string.Empty;
+
+    private TeamResponse? _team;
+    private PagedResult<SprintSummaryResponse>? _page;
+    private Error? _error;
+    private bool _loading = true;
+    private int _currentPage = 1;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (_team?.Key != Key)
+        {
+            await LoadAsync();
+        }
+    }
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        _error = null;
+        StateHasChanged();
+
+        var team = await GetTeam.HandleAsync(Key, _cancellation.Token);
+
+        if (team.IsFailure)
+        {
+            _error = team.Error;
+            _loading = false;
+            StateHasChanged();
+            return;
+        }
+
+        _team = team.Value;
+
+        await ReloadSprintsAsync();
+
+        _loading = false;
+        StateHasChanged();
+    }
+
+    private async Task ReloadSprintsAsync()
+    {
+        var result = await ListSprints.HandleAsync(
+            new ListSprintsRequest { Key = Key, Page = _currentPage },
+            _cancellation.Token);
+
+        if (result.IsSuccess)
+        {
+            _page = result.Value;
+        }
+        else
+        {
+            _error = result.Error;
+        }
+    }
+
+    private async Task GoToPageAsync(int page)
+    {
+        _currentPage = page;
+        await ReloadSprintsAsync();
+        StateHasChanged();
+    }
+
+    private void OpenSprint(Guid sprintId) => Navigation.NavigateTo($"/teams/{Key}/sprints/{sprintId}");
+
+    private async Task OpenDialogAsync(SprintSummaryResponse? sprint)
+    {
+        var parameters = new DialogParameters<SprintDialog>
+        {
+            { dialog => dialog.TeamKey, Key },
+            { dialog => dialog.Existing, sprint }
+        };
+
+        var title = sprint is null ? "Nuevo sprint" : "Editar sprint";
+        var dialog = await DialogService.ShowAsync<SprintDialog>(title, parameters);
+        var result = await dialog.Result;
+
+        if (result is { Canceled: false })
+        {
+            await ReloadSprintsAsync();
+            StateHasChanged();
+        }
+    }
+
+    public void Dispose()
+    {
+        _cancellation.Cancel();
+        _cancellation.Dispose();
+    }
+}

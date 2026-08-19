@@ -1,0 +1,58 @@
+.issue-group-header {
+    align-items: center;
+    background-color: var(--mud-palette-background-gray);
+    display: flex;
+    gap: 0.375rem;
+    padding: 0.4rem 0.75rem;
+}
+
+.issue-group-header:not(:first-child) {
+    border-top: 1px solid var(--mud-palette-lines-default);
+}
+
+.issue-group-title {
+    font-weight: 600;
+}
+
+.issue-row {
+    align-items: center;
+    border-top: 1px solid var(--mud-palette-lines-default);
+    cursor: pointer;
+    display: flex;
+    gap: 0.75rem;
+    min-height: 2rem;
+    padding: 0.375rem 0.75rem;
+}
+
+.issue-row:hover {
+    background-color: var(--mud-palette-action-default-hover);
+}
+
+.issue-row-identifier {
+    color: var(--mud-palette-text-secondary);
+    flex-shrink: 0;
+    font-family: ui-monospace, "Cascadia Code", "SF Mono", Consolas, monospace;
+    font-size: 0.75rem;
+    width: 4.5rem;
+}
+
+.issue-row-title {
+    flex: 1 1 auto;
+    font-size: 0.8125rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.issue-row-labels {
+    display: flex;
+    flex-shrink: 0;
+    gap: 0.25rem;
+}
+
+.issue-row-estimate {
+    color: var(--mud-palette-text-secondary);
+    flex-shrink: 0;
+    font-size: 0.75rem;
+    font-variant-numeric: tabular-nums;
+}
