@@ -2,10 +2,12 @@
 @implements IDisposable
 
 @using Linear.Web.Features.Issues.Contracts
+@using Linear.Web.Features.Issues.Filtering
 @using Linear.Web.Features.Issues.List
 @using Linear.Web.Features.Teams.Contracts
 @using Linear.Web.Features.Teams.GetByKey
 @using Linear.Web.Shared.Pagination
+@using Microsoft.AspNetCore.WebUtilities
 
 @inject GetTeamByKeyHandler GetTeam
 @inject ListIssuesHandler ListIssues
@@ -20,18 +22,32 @@
 {
     <MudSkeleton Height="220px" />
 }
+else if (_team is not null)
+{
+    @* La barra se dibuja aunque la consulta falle: si un filtro de la URL es inválido, hace
+       falta poder corregirlo o quitarlo sin editar la dirección a mano. *@
+    <IssueFilterBar TeamKey="@Key"
+                    Team="_team"
+                    Expressions="_filters"
+                    ExpressionsChanged="OnFiltersChangedAsync" />
+}
+
+@if (_loading)
+{
+    <MudSkeleton Height="220px" Class="mt-4" />
+}
 else if (_error is not null)
 {
-    <MudAlert Severity="Severity.Error" Dense="true" Variant="Variant.Outlined">
+    <MudAlert Severity="Severity.Error" Dense="true" Variant="Variant.Outlined" Class="mt-4">
         @_error.Description
     </MudAlert>
 }
-else
+else if (_page is not null)
 {
-    <MudStack Spacing="4">
+    <MudStack Spacing="4" Class="mt-4">
         <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
             <MudText Typo="Typo.body2" Color="Color.Secondary">
-                @_page!.TotalCount @(_page.TotalCount == 1 ? "issue" : "issues")
+                @_page.TotalCount @(_page.TotalCount == 1 ? "issue" : "issues")
             </MudText>
             <MudButton Variant="Variant.Filled"
                        Color="Color.Primary"
@@ -42,7 +58,22 @@ else
             </MudButton>
         </MudStack>
 
-        @if (_page.Items.Count == 0)
+        @* Con filtros puestos, "no hay issues" y "ningún issue coincide" son dos cosas
+           distintas: ofrecer "crear el primero" cuando el equipo sí tiene issues, pero
+           ninguno pasa el filtro, sería desorientador. *@
+        @if (_page.Items.Count == 0 && HasFilters)
+        {
+            <MudPaper Outlined="true" Class="pa-8">
+                <MudStack AlignItems="AlignItems.Center" Spacing="2">
+                    <MudIcon Icon="@Icons.Material.Rounded.FilterListOff" Size="Size.Large" Color="Color.Secondary" />
+                    <MudText Typo="Typo.h4">Ningún issue coincide</MudText>
+                    <MudText Typo="Typo.body2" Color="Color.Secondary" Align="Align.Center">
+                        Probá quitando alguna condición del filtro.
+                    </MudText>
+                </MudStack>
+            </MudPaper>
+        }
+        else if (_page.Items.Count == 0)
         {
             <MudPaper Outlined="true" Class="pa-8">
                 <MudStack AlignItems="AlignItems.Center" Spacing="2">
@@ -113,7 +144,7 @@ else
         {
             <MudPagination Count="_page.TotalPages"
                            Selected="_currentPage"
-                           SelectedChanged="GoToPageAsync"
+                           SelectedChanged="GoToPage"
                            Size="Size.Small" />
         }
     </MudStack>
@@ -125,18 +156,85 @@ else
     [Parameter]
     public string Key { get; set; } = string.Empty;
 
+    // Los filtros viven en la query string, no en el estado del componente: así una vista
+    // filtrada se comparte con solo copiar la dirección, y el botón de atrás del navegador
+    // deshace un filtro como cualquier otra navegación. Blazor vuelve a invocar
+    // OnParametersSetAsync cuando la query cambia, así que el listado se recarga solo.
+    [SupplyParameterFromQuery]
+    public string? Status { get; set; }
+
+    [SupplyParameterFromQuery]
+    public string? Priority { get; set; }
+
+    [SupplyParameterFromQuery]
+    public string? Assignee { get; set; }
+
+    [SupplyParameterFromQuery]
+    public string? Label { get; set; }
+
+    [SupplyParameterFromQuery]
+    public string? Sprint { get; set; }
+
+    [SupplyParameterFromQuery]
+    public string? CreatedBy { get; set; }
+
+    [SupplyParameterFromQuery]
+    public string? Title { get; set; }
+
+    [SupplyParameterFromQuery]
+    public int? Page { get; set; }
+
     private TeamResponse? _team;
     private PagedResult<IssueSummaryResponse>? _page;
     private Error? _error;
     private bool _loading = true;
     private int _currentPage = 1;
+    private string? _loadedQuery;
+
+    private Dictionary<IssueFilterField, string?> _filters = [];
+
+    private bool HasFilters => _filters.Values.Any(expression => !string.IsNullOrWhiteSpace(expression));
 
     protected override async Task OnParametersSetAsync()
     {
-        if (_team?.Key != Key)
+        _filters = new Dictionary<IssueFilterField, string?>
         {
-            await LoadAsync();
+            [IssueFilterField.Status] = Status,
+            [IssueFilterField.Priority] = Priority,
+            [IssueFilterField.Assignee] = Assignee,
+            [IssueFilterField.Label] = Label,
+            [IssueFilterField.Sprint] = Sprint,
+            [IssueFilterField.CreatedBy] = CreatedBy,
+            [IssueFilterField.Title] = Title
+        };
+
+        _currentPage = Page is > 0 ? Page.Value : 1;
+
+        // Se recarga cuando cambia el equipo o cualquier filtro. La huella evita repetir la
+        // consulta cuando Blazor vuelve a fijar los mismos parámetros.
+        var query = $"{Key}?{string.Join('&', _filters.Select(entry => $"{entry.Key}={entry.Value}"))}&p={_currentPage}";
+
+        if (_loadedQuery == query)
+        {
+            return;
         }
+
+        _loadedQuery = query;
+
+        await LoadAsync();
+    }
+
+    /// <summary>
+    /// Lleva los filtros a la URL. Navegar —en vez de guardar el estado acá— es lo que hace
+    /// que la vista quede compartible y que el historial del navegador la recuerde.
+    /// </summary>
+    private Task OnFiltersChangedAsync(IReadOnlyDictionary<IssueFilterField, string?> expressions)
+    {
+        // Cambiar un filtro vuelve a la primera página: la número tres del resultado anterior
+        // no significa nada para el nuevo.
+        NavigateTo(expressions, page: 1);
+
+        return Task.CompletedTask;
     }
 
     private async Task LoadAsync()
@@ -166,7 +264,18 @@ else
     private async Task ReloadIssuesAsync()
     {
         var result = await ListIssues.HandleAsync(
-            new ListIssuesRequest { Key = Key, Page = _currentPage },
+            new ListIssuesRequest
+            {
+                Key = Key,
+                Page = _currentPage,
+                Status = Status,
+                Priority = Priority,
+                Assignee = Assignee,
+                Label = Label,
+                Sprint = Sprint,
+                CreatedBy = CreatedBy,
+                Title = Title
+            },
             _cancellation.Token);
 
         if (result.IsSuccess)
@@ -175,15 +284,42 @@ else
         }
         else
         {
+            _page = null;
             _error = result.Error;
         }
     }
 
-    private async Task GoToPageAsync(int page)
+    /// <summary>
+    /// La página también viaja en la URL, para que una vista compartida abra donde se la
+    /// dejó y el botón de atrás recorra las páginas.
+    /// </summary>
+    private void GoToPage(int page) => NavigateTo(_filters, page);
+
+    /// <summary>
+    /// Arma la dirección del listado desde cero con los filtros y la página indicados.
+    /// Se reconstruye entera en vez de agregarle parámetros a la actual, porque agregarlos
+    /// duplicaría los que ya estaban en lugar de reemplazarlos.
+    /// </summary>
+    private void NavigateTo(IReadOnlyDictionary<IssueFilterField, string?> expressions, int page)
     {
-        _currentPage = page;
-        await ReloadIssuesAsync();
-        StateHasChanged();
+        var parameters = new Dictionary<string, string?>();
+
+        foreach (var field in Enum.GetValues<IssueFilterField>())
+        {
+            expressions.TryGetValue(field, out var expression);
+
+            parameters[field.ToQueryName()] = string.IsNullOrWhiteSpace(expression) ? null : expression;
+        }
+
+        // La primera página no se escribe: es el valor por omisión, y ensuciaría la URL que
+        // se comparte.
+        parameters["page"] = page > 1
+            ? page.ToString(System.Globalization.CultureInfo.InvariantCulture)
+            : null;
+
+        Navigation.NavigateTo(
+            QueryHelpers.AddQueryString($"/teams/{Key}/issues", parameters),
+            forceLoad: false);
     }
 
     /// <summary>

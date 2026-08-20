@@ -1,0 +1,349 @@
+@implements IDisposable
+
+@using Linear.Domain.Sprints
+@using Linear.Web.Features.Issues.Filtering
+@using Linear.Web.Features.Labels.Contracts
+@using Linear.Web.Features.Labels.List
+@using Linear.Web.Features.Sprints.Contracts
+@using Linear.Web.Features.Sprints.List
+@using Linear.Web.Features.Teams.Contracts
+@using Linear.Web.Shared.Pagination
+
+@inject ListLabelsHandler ListLabels
+@inject ListSprintsHandler ListSprints
+
+@* Constructor de filtros: una fila por campo —campo, operador, valores—, tal como lo
+   plantea la task 008. Las filas se combinan con Y, y como cada campo es un parámetro de
+   la query string, no puede haber dos condiciones sobre el mismo campo. *@
+<div class="filter-bar">
+    <MudMenu StartIcon="@Icons.Material.Rounded.FilterList"
+             Label="Filtrar"
+             Variant="Variant.Outlined"
+             Size="Size.Small"
+             Dense="true"
+             AnchorOrigin="Origin.BottomLeft"
+             TransformOrigin="Origin.TopLeft"
+             AriaLabel="Agregar filtro">
+        @if (AvailableFields.Count == 0)
+        {
+            <MudMenuItem Disabled="true">Ya estás filtrando por todos los campos</MudMenuItem>
+        }
+        else
+        {
+            @foreach (var field in AvailableFields)
+            {
+                <MudMenuItem Icon="@IssueFilterOptions.IconFor(field)"
+                             OnClick="@(() => AddAsync(field))">
+                    @IssueFilterOptions.For(field)
+                </MudMenuItem>
+            }
+        }
+    </MudMenu>
+
+    @if (_rows.Count > 0)
+    {
+        <MudButton Variant="Variant.Text"
+                   Size="Size.Small"
+                   StartIcon="@Icons.Material.Rounded.Close"
+                   OnClick="ClearAsync">
+            Limpiar
+        </MudButton>
+    }
+</div>
+
+@if (_rows.Count > 0)
+{
+    <MudPaper Outlined="true" Class="filter-rows">
+        @foreach (var row in _rows)
+        {
+            <div class="filter-row" @key="row.Field">
+                <MudIcon Icon="@IssueFilterOptions.IconFor(row.Field)" Size="Size.Small" Color="Color.Secondary" />
+
+                <MudText Typo="Typo.body2" Class="filter-row-field">
+                    @IssueFilterOptions.For(row.Field)
+                </MudText>
+
+                @if (row.Field.IsText())
+                {
+                    <MudText Typo="Typo.caption" Color="Color.Secondary" Class="filter-row-operator">
+                        contiene
+                    </MudText>
+
+                    <MudTextField T="string"
+                                  Value="row.Text"
+                                  ValueChanged="@(value => OnTextChangedAsync(row, value))"
+                                  DebounceInterval="400"
+                                  Variant="Variant.Text"
+                                  Margin="Margin.Dense"
+                                  Placeholder="Texto del título"
+                                  Class="filter-row-values" />
+                }
+                else
+                {
+                    <MudSelect T="bool"
+                               Value="row.Negated"
+                               ValueChanged="@(value => OnNegatedChangedAsync(row, value))"
+                               Variant="Variant.Text"
+                               Margin="Margin.Dense"
+                               Dense="true"
+                               Class="filter-row-operator">
+                        <MudSelectItem T="bool" Value="false">
+                            @IssueFilterOptions.OperatorFor(row.Field, false, row.Values.Count)
+                        </MudSelectItem>
+                        <MudSelectItem T="bool" Value="true">
+                            @IssueFilterOptions.OperatorFor(row.Field, true, row.Values.Count)
+                        </MudSelectItem>
+                    </MudSelect>
+
+                    @* Multiselección: elegir un valor o varios es la diferencia entre
+                       "es" e "está en", así que no hace falta un selector de operador aparte. *@
+                    @* ToStringFunc: sin esto, el campo cerrado mostraría el valor crudo que
+                       viaja en la URL ("Done", "High, Urgent") en lugar del nombre que se
+                       lee en la lista desplegable. *@
+                    <MudSelect T="string"
+                               MultiSelection="true"
+                               SelectedValues="row.Values"
+                               SelectedValuesChanged="@(values => OnValuesChangedAsync(row, values))"
+                               ToStringFunc="@(value => LabelFor(row.Field, value))"
+                               Variant="Variant.Text"
+                               Margin="Margin.Dense"
+                               Dense="true"
+                               Placeholder="Elegir…"
+                               Class="filter-row-values">
+                        @foreach (var option in OptionsFor(row.Field))
+                        {
+                            <MudSelectItem T="string" Value="option.Value">@option.Label</MudSelectItem>
+                        }
+                    </MudSelect>
+                }
+
+                <MudIconButton Icon="@Icons.Material.Rounded.Close"
+                               Size="Size.Small"
+                               aria-label="@($"Quitar el filtro por {IssueFilterOptions.For(row.Field)}")"
+                               OnClick="@(() => RemoveAsync(row.Field))" />
+            </div>
+        }
+    </MudPaper>
+}
+
+@code {
+    private readonly CancellationTokenSource _cancellation = new();
+
+    private readonly List<FilterRow> _rows = [];
+    private IReadOnlyList<LabelResponse> _labels = [];
+    private IReadOnlyList<SprintSummaryResponse> _sprints = [];
+
+    [Parameter, EditorRequired]
+    public required string TeamKey { get; set; }
+
+    /// <summary>Equipo ya cargado, para ofrecer sus miembros como responsables y autores.</summary>
+    [Parameter, EditorRequired]
+    public required TeamResponse Team { get; set; }
+
+    /// <summary>Expresiones activas por campo, tal como vienen de la URL.</summary>
+    [Parameter]
+    public IReadOnlyDictionary<IssueFilterField, string?> Expressions { get; set; } =
+        new Dictionary<IssueFilterField, string?>();
+
+    /// <summary>Avisa el conjunto completo de expresiones cada vez que cambia alguna.</summary>
+    [Parameter]
+    public EventCallback<IReadOnlyDictionary<IssueFilterField, string?>> ExpressionsChanged { get; set; }
+
+    // 'candidate' y no 'field': dentro de un accessor de propiedad, 'field' es una palabra
+    // clave de C# 14 que apunta al backing field sintetizado.
+    private IReadOnlyList<IssueFilterField> AvailableFields =>
+        [.. Enum.GetValues<IssueFilterField>().Where(candidate => _rows.All(row => row.Field != candidate))];
+
+    protected override void OnParametersSet() => SyncRowsFromExpressions();
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            await LoadOptionsAsync();
+        }
+    }
+
+    /// <summary>
+    /// Reconstruye las filas a partir de la URL. Es lo que hace que una vista compartida se
+    /// abra con los mismos filtros puestos, y que el botón de atrás funcione.
+    /// </summary>
+    private void SyncRowsFromExpressions()
+    {
+        _rows.Clear();
+
+        foreach (var field in Enum.GetValues<IssueFilterField>())
+        {
+            if (!Expressions.TryGetValue(field, out var expression) || string.IsNullOrWhiteSpace(expression))
+            {
+                continue;
+            }
+
+            var parsed = IssueFilter.Parse(field, expression);
+
+            if (parsed.IsFailure)
+            {
+                // Una expresión inválida en la URL no rompe la barra: el listado ya muestra
+                // el error, y acá simplemente no se dibuja esa fila.
+                continue;
+            }
+
+            _rows.Add(new FilterRow(field)
+            {
+                Negated = parsed.Value.Operator.IsNegated(),
+                Values = [.. parsed.Value.Values],
+                Text = field.IsText() ? parsed.Value.Values[0] : string.Empty
+            });
+        }
+    }
+
+    private async Task LoadOptionsAsync()
+    {
+        var labels = await ListLabels.HandleAsync(
+            new ListLabelsRequest { Key = TeamKey, PageSize = PageRequest.MaxPageSize },
+            _cancellation.Token);
+
+        if (labels.IsSuccess)
+        {
+            _labels = labels.Value.Items;
+        }
+
+        var sprints = await ListSprints.HandleAsync(
+            new ListSprintsRequest { Key = TeamKey, PageSize = PageRequest.MaxPageSize },
+            _cancellation.Token);
+
+        if (sprints.IsSuccess)
+        {
+            _sprints = sprints.Value.Items;
+        }
+
+        StateHasChanged();
+    }
+
+    private IReadOnlyList<IssueFilterOption> OptionsFor(IssueFilterField field) => field switch
+    {
+        IssueFilterField.Assignee =>
+        [
+            new(IssueFilterOptions.Me, "Yo"),
+            new(IssueFilterOptions.None, "Sin responsable"),
+            .. Team.Members.Select(member => new IssueFilterOption(member.UserId.ToString(), member.Name))
+        ],
+        IssueFilterField.CreatedBy =>
+        [
+            new(IssueFilterOptions.Me, "Yo"),
+            .. Team.Members.Select(member => new IssueFilterOption(member.UserId.ToString(), member.Name))
+        ],
+        IssueFilterField.Label =>
+        [
+            .. _labels.Select(label => new IssueFilterOption(label.Id.ToString(), label.Name))
+        ],
+        IssueFilterField.Sprint =>
+        [
+            new(IssueFilterOptions.None, "Sin sprint"),
+            .. _sprints.Select(sprint => new IssueFilterOption(sprint.Id.ToString(), sprint.Name))
+        ],
+        _ => IssueFilterOptions.FixedOptionsFor(field)
+    };
+
+    /// <summary>
+    /// Nombre visible de un valor. Si no está entre las opciones —una label que se eliminó
+    /// después de compartir la vista, por ejemplo— se muestra el valor tal cual, que es más
+    /// útil que dejar el campo en blanco.
+    /// </summary>
+    private string LabelFor(IssueFilterField field, string? value) =>
+        value is null
+            ? string.Empty
+            : OptionsFor(field).FirstOrDefault(option => option.Value == value)?.Label ?? value;
+
+    private async Task AddAsync(IssueFilterField field)
+    {
+        _rows.Add(new FilterRow(field));
+
+        // Una fila recién agregada todavía no tiene valores, así que no aporta condición ni
+        // cambia la URL hasta que se elija alguno.
+        StateHasChanged();
+        await Task.CompletedTask;
+    }
+
+    private Task RemoveAsync(IssueFilterField field)
+    {
+        _rows.RemoveAll(row => row.Field == field);
+        return PublishAsync();
+    }
+
+    private Task ClearAsync()
+    {
+        _rows.Clear();
+        return PublishAsync();
+    }
+
+    private Task OnNegatedChangedAsync(FilterRow row, bool negated)
+    {
+        row.Negated = negated;
+        return PublishAsync();
+    }
+
+    private Task OnValuesChangedAsync(FilterRow row, IEnumerable<string> values)
+    {
+        row.Values = [.. values];
+        return PublishAsync();
+    }
+
+    private Task OnTextChangedAsync(FilterRow row, string? text)
+    {
+        row.Text = text ?? string.Empty;
+        return PublishAsync();
+    }
+
+    private Task PublishAsync()
+    {
+        var expressions = new Dictionary<IssueFilterField, string?>();
+
+        foreach (var row in _rows)
+        {
+            expressions[row.Field] = row.ToExpression();
+        }
+
+        return ExpressionsChanged.InvokeAsync(expressions);
+    }
+
+    public void Dispose()
+    {
+        _cancellation.Cancel();
+        _cancellation.Dispose();
+    }
+
+    /// <summary>Estado editable de una fila del constructor.</summary>
+    private sealed class FilterRow(IssueFilterField field)
+    {
+        public IssueFilterField Field { get; } = field;
+
+        public bool Negated { get; set; }
+
+        public IReadOnlyCollection<string> Values { get; set; } = [];
+
+        public string Text { get; set; } = string.Empty;
+
+        /// <summary>
+        /// La expresión que va a la URL, o <c>null</c> si la fila todavía no tiene valores.
+        /// El prefijo <c>not:</c> es el que distingue excluir de incluir; entre "es" y
+        /// "está en" decide la cantidad de valores, sin necesidad de escribirlo.
+        /// </summary>
+        public string? ToExpression()
+        {
+            if (Field.IsText())
+            {
+                return string.IsNullOrWhiteSpace(Text) ? null : Text.Trim();
+            }
+
+            if (Values.Count == 0)
+            {
+                return null;
+            }
+
+            var joined = string.Join(',', Values);
+
+            return Negated ? $"not:{joined}" : joined;
+        }
+    }
+}

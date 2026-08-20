@@ -1,0 +1,41 @@
+.filter-bar {
+    align-items: center;
+    display: flex;
+    gap: 0.5rem;
+}
+
+.filter-rows {
+    display: flex;
+    flex-direction: column;
+    margin-top: 0.5rem;
+}
+
+.filter-row {
+    align-items: center;
+    display: grid;
+    gap: 0.5rem;
+    grid-template-columns: auto 7rem 8rem minmax(0, 1fr) auto;
+    padding: 0.25rem 0.625rem;
+}
+
+.filter-row:not(:first-child) {
+    border-top: 1px solid var(--mud-palette-lines-default);
+}
+
+.filter-row-field {
+    font-weight: 600;
+}
+
+.filter-row-operator {
+    color: var(--mud-palette-text-secondary);
+}
+
+.filter-row-values {
+    min-width: 0;
+}
+
+@media (max-width: 767.98px) {
+    .filter-row {
+        grid-template-columns: auto minmax(0, 1fr) auto;
+    }
+}

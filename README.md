@@ -158,6 +158,68 @@ A diferencia de `Issue` o `Label`, el modelo de dominio ubica `Comment` dentro d
 `Issue`. Acá es raíz propia: la colección crece sin techo, y cargarla entera cada vez que se
 abre un issue chocaría con la paginación obligatoria de los listados.
 
+## Filtros
+
+El listado de issues se filtra por estado, prioridad, responsable, label, sprint, autor y
+título. Las condiciones se combinan con Y, y hay como máximo una por campo: cada campo es un
+parámetro de la query string, que es exactamente lo que muestra el constructor de filtros
+—una fila por campo—.
+
+### En la URL
+
+Los filtros viven en la dirección, no en el estado de la pantalla. Así una vista se comparte
+copiando la URL, y el botón de atrás del navegador deshace un filtro como cualquier otra
+navegación:
+
+```text
+/teams/WEB/issues?status=not:Done&priority=High,Urgent&assignee=me
+```
+
+La expresión de cada parámetro es `[operador:]valor[,valor…]`. El operador casi nunca hace
+falta escribirlo:
+
+| Expresión | Operador | Se lee |
+| --- | --- | --- |
+| `status=InProgress` | `is` | es |
+| `status=Todo,InProgress` | `in` | está en |
+| `status=not:Done` | `isNot` | no es |
+| `status=not:Done,Canceled` | `notIn` | no está en |
+| `title=login` | `contains` | contiene |
+
+`is`/`in` y `isNot`/`notIn` son en el fondo el mismo par —incluir y excluir— y solo se
+distinguen por la cantidad de valores: "is X" es "in [X]". Por eso alcanza con el prefijo
+`not:`, y la cantidad de valores decide el resto. Las formas largas (`is:`, `isNot:`, `in:`,
+`notIn:`, `contains:`) se aceptan igual, para poder escribir una URL explícita a mano, y se
+normalizan a la forma corta al volver a la dirección.
+
+`contains` es solo para el título, y el título solo acepta `contains`. Es una coincidencia
+parcial sin distinguir mayúsculas, no la búsqueda de la [task 009](.ai/tasks/009-search.md)
+—esa recorre además descripción y comentarios con Full Text Search—.
+
+### Valores especiales
+
+| Valor | Campos | Significa |
+| --- | --- | --- |
+| `me` | responsable, autor | El usuario de la sesión. |
+| `none` | responsable, sprint | Sin responsable / sin sprint. |
+
+Las labels se pueden nombrar por identificador o por nombre (`label=bug`), porque el nombre
+es único dentro del equipo. Un nombre que no existe devuelve un error en lugar de una lista
+vacía: una vista compartida que en silencio no trae nada es más difícil de entender.
+
+### Negar y los valores nulos
+
+Cada condición se arma en afirmativo y, si el operador excluye, se niega entera. No es solo
+para no duplicar código: es lo que da la semántica correcta con las columnas que admiten
+nulos. **"Responsable no es Ana" incluye a los issues sin responsable**, que es lo que
+cualquiera espera; escribir la condición negada a mano tendería a producir
+`AssigneeId != ana`, y en SQL eso descarta los nulos y escondería justamente los issues sin
+asignar. Lo mismo vale para labels y sprint.
+
+El filtro por label es un `EXISTS`, no un `JOIN`: filtra sin multiplicar la fila del issue
+por cada label que tenga, así que sigue siendo compatible con la paginación del listado. El
+total que se devuelve es el de la consulta ya filtrada.
+
 ## Sprints
 
 Un sprint agrupa el trabajo de un período acotado. Planificar es trabajo del día a día, no
