@@ -3,11 +3,15 @@
 @using Linear.Web.Features.Activities.Contracts
 @using Linear.Web.Features.Activities.ListIssueActivity
 @using Linear.Web.Shared.Pagination
+@using Linear.Web.Shared.Realtime
 
 @inject ListIssueActivityHandler ListActivity
 
 @* Historial del issue. Se carga aparte del detalle, igual que los comentarios: es un listado
    paginado con su propio ciclo de vida y no tiene por qué demorar la pantalla. *@
+@* El historial del issue se completa solo a medida que el equipo trabaja (task 014). *@
+<TeamRealtime Key="@Key" OnNotification="OnRealtimeAsync" />
+
 <section class="issue-activity">
     <MudText Typo="Typo.subtitle2" Class="issue-activity-heading">
         Actividad@(_totalCount > 0 ? $" · {_totalCount}" : string.Empty)
@@ -86,6 +90,40 @@
         await LoadPageAsync(_page);
 
         _loading = false;
+        StateHasChanged();
+    }
+
+    /// <summary>
+    /// Suma al historial lo que acaba de pasar, sin mover a la persona de donde estaba.
+    /// </summary>
+    /// <remarks>
+    /// El aviso de actividad trae el issue al que corresponde —lo lleva en su payload desde
+    /// la task 011—, así que el historial de un issue solo se refresca cuando le toca y no
+    /// ante cualquier movimiento del equipo.
+    /// </remarks>
+    private async Task OnRealtimeAsync(TeamNotification notification)
+    {
+        if (notification.Event is not RealtimeEvent.ActivityCreated ||
+            notification.Identifier != Identifier)
+        {
+            return;
+        }
+
+        await RefreshAsync();
+    }
+
+    /// <summary>Relee las páginas ya cargadas, conservando cuántas eran.</summary>
+    private async Task RefreshAsync()
+    {
+        var pages = _page;
+
+        _activities.Clear();
+
+        for (var page = 1; page <= pages; page++)
+        {
+            await LoadPageAsync(page);
+        }
+
         StateHasChanged();
     }
 

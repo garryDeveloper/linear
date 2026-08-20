@@ -1,4 +1,5 @@
 using Linear.Web.Infrastructure.Activities;
+using Linear.Web.Infrastructure.Realtime;
 
 using Microsoft.EntityFrameworkCore;
 
@@ -42,6 +43,7 @@ public static class PersistenceServiceCollectionExtensions
         }
 
         services.AddScoped<ActivityInterceptor>();
+        services.AddScoped<RealtimeInterceptor>();
 
         // La fábrica es Scoped y no Singleton —el valor por omisión— porque el interceptor
         // de actividad necesita saber quién está operando, y esa identidad vive en el ámbito
@@ -53,7 +55,13 @@ public static class PersistenceServiceCollectionExtensions
                 options.UseNpgsql(connectionString, npgsql => npgsql
                     .MigrationsAssembly(typeof(AppDbContext).Assembly.FullName));
 
-                options.AddInterceptors(provider.GetRequiredService<ActivityInterceptor>());
+                // El orden importa y es el motivo de que se registren juntos: el de actividad
+                // crea las filas de Activity durante SavingChanges, y el de tiempo real las
+                // necesita ya presentes para poder anunciarlas. Invertirlos no rompe nada de
+                // forma visible: simplemente el feed dejaría de actualizarse solo.
+                options.AddInterceptors(
+                    provider.GetRequiredService<ActivityInterceptor>(),
+                    provider.GetRequiredService<RealtimeInterceptor>());
 
                 if (environment.IsDevelopment())
                 {

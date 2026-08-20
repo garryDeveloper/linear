@@ -592,6 +592,119 @@ suficiente para escribir la segunda sin apuro, y corto para que una `g` suelta n
 esperando indefinidamente. Si la segunda tecla no completa ninguna secuencia, se evalúa como
 atajo simple —`G` y después `C` crea un issue—.
 
+## Tiempo real
+
+Lo que hace un integrante del equipo aparece en la pantalla de los demás sin refrescar: issues
+que se crean o cambian, comentarios, sprints y el feed de actividad.
+
+### Un solo lugar produce los avisos
+
+Ningún handler menciona el tiempo real, igual que ninguno menciona la actividad. Los avisos
+salen de un `SaveChangesInterceptor` que mira lo que se está guardando, así que **una operación
+nueva avisa por el solo hecho de guardar**.
+
+La diferencia con el interceptor de actividad está en el momento:
+
+| | Cuándo | Por qué |
+| --- | --- | --- |
+| Actividad | Antes de confirmar | Tiene que viajar en la misma transacción que el cambio. |
+| Tiempo real | Después de confirmar | Un aviso no se puede deshacer. |
+
+Anunciar un cambio que después se revierte deja a todos los clientes mostrando algo que nunca
+pasó. Por eso los avisos se calculan en `SavingChanges` —única oportunidad de ver qué cambió— y
+se emiten en `SavedChanges`.
+
+### Qué se avisa
+
+`RealtimeEvent` es a propósito **más pobre** que `ActivityAction`. El historial necesita saber
+que pasar un issue a `Done` fue *completarlo* y no *editarlo*; un cliente conectado no: solo
+necesita saber que el issue cambió para volver a pedirlo.
+
+Por eso cambiar estado, prioridad, responsable, labels o estimación llegan todos como
+`IssueUpdated`. Todas las mutaciones pasan por el agregado y todas tocan `UpdatedAt`, así que
+ninguna se escapa —y no hay una lista que se desactualice con el primer método nuevo—.
+
+`IssueDeleted` es el caso que **no** podría derivarse del historial: eliminar es definitivo y no
+deja registro, porque el historial es append-only y la task 011 no definió esa acción. Sale del
+propio guardado.
+
+El aviso lleva lo justo para que quien lo recibe decida si le interesa y vuelva a pedir el dato,
+nunca el issue ni el comentario en sí. Mandar el estado completo obligaría a resolver ahí los
+permisos de cada destinatario y a duplicar el mapeo a DTO; avisar y dejar que el cliente pida
+por el camino de siempre reusa el handler que ya aplica esas reglas.
+
+### Aislamiento por equipo
+
+Cada equipo es un grupo de SignalR, nombrado por **identificador** y no por clave: la clave se
+puede cambiar, y una conexión suscripta con la vieja seguiría —o dejaría de— recibir según el
+orden en que pasaran las cosas.
+
+El aislamiento no depende de que el cliente filtre lo que recibe: a un grupo **solo se entra
+demostrando que se pertenece al equipo**. La comprobación ocurre al suscribirse y no al emitir,
+porque emitir ocurre una vez por cambio y tiene que ser barato.
+
+Alcanza con el rol `Member`: recibir avisos es leer, y leer es lo que cualquier integrante ya
+puede hacer por la interfaz. A quien no pertenece se le responde igual que si el equipo no
+existiera, misma política que en el resto de la aplicación.
+
+### Dos transportes, un solo contrato
+
+```text
+SaveChanges (confirmado)
+        ↓
+  ITeamNotifier
+    ├──→ TeamHub  ──→ clientes de SignalR
+    └──→ suscriptores en proceso ──→ componentes Blazor Server
+```
+
+Los dos reciben el mismo `TeamNotification`; lo que cambia es el transporte.
+
+Las pantallas usan el camino en proceso. Un componente Blazor Server **ya corre en el
+servidor** y ya tiene su propio canal con el navegador —el circuito—: hacerlo abrir una conexión
+de SignalR contra su propia aplicación sumaría un websocket y una ronda de autenticación por
+usuario para entregar un mensaje que nace a metros de distancia.
+
+Eso no vuelve opcional el control de acceso del hub: `TeamRealtimeSubscriber` comprueba la
+pertenencia con la misma regla antes de suscribir. Si la comprobación viviera solo en el hub,
+el camino en proceso sería una forma de recibir los cambios de un equipo ajeno.
+
+El hub sigue siendo el transporte real para cualquier cliente fuera del circuito, y es lo que
+cubren los tests de autorización.
+
+### En la pantalla
+
+Un componente `<TeamRealtime Key="..." OnNotification="..." />` resuelve el alta, la baja y el
+salto al hilo del renderizador —el aviso llega en el hilo de quien guardó el cambio, que es otra
+persona—. Qué recargar lo decide cada pantalla, y ninguna recarga entera: el listado relee su
+página con los filtros puestos, el hilo de comentarios relee las páginas que ya tenía, el
+tablero de sprint no vuelve a mostrar el esqueleto de carga.
+
+Quien hizo el cambio **no recibe su propio eco**: su pantalla ya se actualizó con la respuesta
+de la operación, y recargarla le movería el scroll o le cerraría un menú abierto.
+
+### Conflictos
+
+La estrategia de la V1 es **optimista y explícita**: el que llega segundo no pisa al primero en
+silencio, se entera.
+
+Al guardar el título o la descripción, la interfaz manda `expectedUpdatedAt`, la versión que
+tenía a la vista. Si no coincide con la guardada, el servidor responde `409` en lugar de
+escribir. Se usa `UpdatedAt` como versión y no una columna nueva porque ese valor ya viaja en la
+respuesta del issue.
+
+La comparación no puede hacerse solo dentro del handler: entre que lee y guarda pasan
+microsegundos, y el conflicto real ocurre en los minutos que alguien pasa escribiendo. Por eso
+la versión la aporta el cliente. Omitirla equivale a "guardá igual", que es lo razonable para un
+cliente de API que no mostró nada antes de escribir.
+
+Del lado de la pantalla, si llega un cambio ajeno **mientras hay texto sin guardar**, no se
+recarga: se avisa y se conserva el borrador. Tampoco se adopta la versión nueva —eso volvería
+aceptable un guardado que pisa el cambio ajeno—, así que al guardar el servidor lo rechaza y la
+persona decide. Un botón descarta el borrador y se queda con lo guardado.
+
+No hay fusión de cambios ni edición colaborativa: la task 014 las excluye explícitamente, y
+frente a la duda gana la consistencia.
+
 ## Datos de ejemplo
 
 Hay un seeder que carga usuarios y equipos para poder recorrer la aplicación con contenido

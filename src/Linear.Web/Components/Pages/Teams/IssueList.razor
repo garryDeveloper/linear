@@ -7,6 +7,7 @@
 @using Linear.Web.Features.Teams.Contracts
 @using Linear.Web.Features.Teams.GetByKey
 @using Linear.Web.Shared.Pagination
+@using Linear.Web.Shared.Realtime
 @using Microsoft.AspNetCore.WebUtilities
 
 @inject GetTeamByKeyHandler GetTeam
@@ -15,6 +16,9 @@
 @inject NavigationManager Navigation
 
 <PageTitle>Issues · Linear</PageTitle>
+
+@* El listado refleja lo que hace el resto del equipo sin tener que refrescar (task 014). *@
+<TeamRealtime Key="@Key" OnNotification="OnRealtimeAsync" />
 
 <TeamPageHeader Team="_team" TeamKey="@Key" />
 
@@ -109,7 +113,10 @@ else if (_page is not null)
 
                     @foreach (var issue in group.Items)
                     {
-                        <div class="issue-row" @onclick="() => OpenIssue(issue.Identifier)">
+                        @* Con clave: el listado se recarga solo cuando otro integrante toca
+                           un issue (task 014), y sin ella Blazor parchea el contenido de
+                           todas las filas en vez de mover la que cambió. *@
+                        <div class="issue-row" @key="issue.Id" @onclick="() => OpenIssue(issue.Identifier)">
                             <span class="issue-row-identifier">@issue.Identifier</span>
                             <span class="issue-row-title">@issue.Title</span>
                             <span class="issue-row-labels">
@@ -235,6 +242,28 @@ else if (_page is not null)
         NavigateTo(expressions, page: 1);
 
         return Task.CompletedTask;
+    }
+
+    /// <summary>
+    /// Reacciona a los issues que crean, cambian o eliminan otros integrantes.
+    /// </summary>
+    /// <remarks>
+    /// Se recarga la página que se está viendo, con los filtros y el orden puestos: pedirle
+    /// al servidor la misma consulta es más simple —y más correcto— que intentar insertar el
+    /// issue nuevo en la posición que le tocaría según el filtro activo.
+    /// </remarks>
+    private async Task OnRealtimeAsync(TeamNotification notification)
+    {
+        if (notification.Event is not (RealtimeEvent.IssueCreated
+            or RealtimeEvent.IssueUpdated
+            or RealtimeEvent.IssueDeleted))
+        {
+            return;
+        }
+
+        await ReloadIssuesAsync();
+
+        StateHasChanged();
     }
 
     private async Task LoadAsync()

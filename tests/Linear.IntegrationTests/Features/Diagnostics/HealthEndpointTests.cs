@@ -22,15 +22,24 @@ public class HealthEndpointTests(LinearWebApplicationFactory factory)
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
     }
 
+    /// <summary>
+    /// Sin sesión no se informa el entorno.
+    /// </summary>
+    /// <remarks>
+    /// El endpoint es anónimo a propósito —una sonda pregunta antes de que exista cualquier
+    /// sesión—, y saber que una instalación corre en Development es saber que tiene
+    /// encendidos los errores detallados y el registro de datos sensibles. El estado, que es
+    /// para lo que sirve la sonda, se informa igual.
+    /// </remarks>
     [Fact]
-    public async Task Health_ReportsTheEnvironmentAndTheStateOfTheDatabase()
+    public async Task Health_DoesNotRevealTheEnvironmentToAnonymousCallers()
     {
         using var client = factory.CreateClient();
 
         var health = await client.GetFromJsonAsync<HealthResponse>("/api/health", CancellationToken.None);
 
         Assert.NotNull(health);
-        Assert.Equal("Testing", health.Environment);
+        Assert.Null(health.Environment);
 
         // La base configurada es inalcanzable, así que el estado tiene que ser degradado
         // en lugar de un error del endpoint: el diagnóstico sigue siendo legible.

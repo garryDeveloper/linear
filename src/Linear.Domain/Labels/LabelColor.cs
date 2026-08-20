@@ -46,7 +46,6 @@ public sealed record LabelColor
     public static LabelColor FromPersistence(string value) => new(value);
 
     /// <summary>
-    /// <summary>
     /// Indica si sobre este color conviene escribir en oscuro.
     /// </summary>
     /// <remarks>

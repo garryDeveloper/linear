@@ -12,6 +12,7 @@
 @using Linear.Web.Features.Sprints.Update
 @using Linear.Web.Features.Teams.Contracts
 @using Linear.Web.Features.Teams.GetByKey
+@using Linear.Web.Shared.Realtime
 
 @inject GetTeamByKeyHandler GetTeam
 @inject GetSprintByIdHandler GetSprint
@@ -24,6 +25,9 @@
 @inject NavigationManager Navigation
 
 <PageTitle>@(_sprint?.Name ?? "Sprint") · Linear</PageTitle>
+
+@* El tablero y las métricas siguen al equipo en vivo (task 014). *@
+<TeamRealtime Key="@Key" OnNotification="OnRealtimeAsync" />
 
 @if (_loading)
 {
@@ -271,6 +275,45 @@ else if (_sprint is not null)
         _sprint = sprint.Value;
 
         _loading = false;
+        StateHasChanged();
+    }
+
+    /// <summary>
+    /// Reacciona a lo que cambió otro integrante.
+    /// </summary>
+    /// <remarks>
+    /// Además de los cambios del sprint mismo interesan los de cualquier issue: mover uno de
+    /// columna, estimarlo o sacarlo del sprint cambia el tablero y las métricas, y esos
+    /// cambios llegan como eventos de issue, no de sprint.
+    /// </remarks>
+    private async Task OnRealtimeAsync(TeamNotification notification)
+    {
+        if (notification.Event is RealtimeEvent.CommentCreated
+            or RealtimeEvent.CommentUpdated
+            or RealtimeEvent.CommentDeleted
+            or RealtimeEvent.ActivityCreated)
+        {
+            return;
+        }
+
+        await RefreshAsync();
+    }
+
+    /// <summary>
+    /// Relee el sprint sin volver a mostrar el esqueleto de carga: la pantalla ya tiene
+    /// contenido y hacerlo parpadear en cada cambio ajeno sería peor que no actualizar.
+    /// </summary>
+    private async Task RefreshAsync()
+    {
+        var sprint = await GetSprint.HandleAsync(
+            new GetSprintByIdRequest { Key = Key, SprintId = SprintId },
+            _cancellation.Token);
+
+        if (sprint.IsSuccess)
+        {
+            _sprint = sprint.Value;
+        }
+
         StateHasChanged();
     }
 

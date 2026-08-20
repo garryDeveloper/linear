@@ -88,6 +88,9 @@
                 AssigneeId = _assigneeId,
                 LabelIds = [.. _labelIds]
             },
+            // Sin token a propósito: esto escribe. El resto de la aplicación cancela sus
+            // lecturas al cerrarse el componente, pero abortar un guardado porque se cerró
+            // el diálogo dejaría a medias algo que la persona pidió.
             CancellationToken.None);
 
         _saving = false;

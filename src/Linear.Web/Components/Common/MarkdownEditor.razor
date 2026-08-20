@@ -48,14 +48,18 @@
     else
     {
         @* El textarea es propio y no un MudTextField porque hace falta la referencia al
-           elemento para manejar la selección desde JavaScript. *@
+           elemento para manejar la selección desde JavaScript.
+
+           El valor nunca viaja nulo: Blazor traduce un atributo nulo en "sacá el atributo", y
+           sacar value de un textarea no vacía lo que el navegador ya tiene escrito. Se nota al
+           descartar una edición local cuando lo que está guardado es vacío. *@
         <textarea @ref="_textarea"
                   class="markdown-input"
                   rows="@Rows"
                   placeholder="@Placeholder"
                   maxlength="@MaxLength"
                   disabled="@Disabled"
-                  value="@Value"
+                  value="@(Value ?? string.Empty)"
                   @oninput="OnInputAsync"
                   @onkeydown="OnKeyDownAsync"></textarea>
     }

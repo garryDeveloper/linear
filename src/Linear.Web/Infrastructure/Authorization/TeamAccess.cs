@@ -19,6 +19,7 @@ public sealed class TeamAccess(ICurrentUser currentUser) : ITeamAccess
             dbContext,
             query => query.FirstOrDefaultAsync(team => team.Id == teamId, cancellationToken),
             () => TeamErrors.NotFound(teamId),
+            userId: null,
             minimumRole,
             tracking,
             cancellationToken);
@@ -36,6 +37,27 @@ public sealed class TeamAccess(ICurrentUser currentUser) : ITeamAccess
             dbContext,
             query => query.FirstOrDefaultAsync(team => team.Key == key, cancellationToken),
             () => TeamErrors.NotFoundByKey(key.Value),
+            userId: null,
+            minimumRole,
+            tracking,
+            cancellationToken);
+    }
+
+    public Task<Result<Team>> RequireRoleAsync(
+        AppDbContext dbContext,
+        TeamKey key,
+        Guid userId,
+        TeamRole minimumRole,
+        bool tracking,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(key);
+
+        return EvaluateAsync(
+            dbContext,
+            query => query.FirstOrDefaultAsync(team => team.Key == key, cancellationToken),
+            () => TeamErrors.NotFoundByKey(key.Value),
+            userId,
             minimumRole,
             tracking,
             cancellationToken);
@@ -45,17 +67,24 @@ public sealed class TeamAccess(ICurrentUser currentUser) : ITeamAccess
         AppDbContext dbContext,
         Func<IQueryable<Team>, Task<Team?>> find,
         Func<Error> notFound,
+        Guid? userId,
         TeamRole minimumRole,
         bool tracking,
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(dbContext);
 
-        var userId = await currentUser.RequireIdAsync(cancellationToken);
-
-        if (userId.IsFailure)
+        // Si quien llama no aportó la identidad, se deduce del contexto de ejecución.
+        if (userId is not { } actor)
         {
-            return Result.Failure<Team>(userId.Error);
+            var resolved = await currentUser.RequireIdAsync(cancellationToken);
+
+            if (resolved.IsFailure)
+            {
+                return Result.Failure<Team>(resolved.Error);
+            }
+
+            actor = resolved.Value;
         }
 
         var query = dbContext.Teams.Include(team => team.Members);
@@ -64,7 +93,7 @@ public sealed class TeamAccess(ICurrentUser currentUser) : ITeamAccess
 
         // A quien no pertenece al equipo se le responde igual que si el equipo no
         // existiera: distinguir ambos casos permitiría averiguar qué equipos hay.
-        if (team is null || team.RoleOf(userId.Value) is not { } role)
+        if (team is null || team.RoleOf(actor) is not { } role)
         {
             return Result.Failure<Team>(notFound());
         }

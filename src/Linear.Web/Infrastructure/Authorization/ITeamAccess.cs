@@ -42,4 +42,26 @@ public interface ITeamAccess
         TeamRole minimumRole,
         bool tracking,
         CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Igual que las anteriores, pero con la identidad dada en lugar de deducida.
+    /// </summary>
+    /// <remarks>
+    /// Existe por el hub de tiempo real. Una conexión de SignalR no tiene <c>HttpContext</c>
+    /// mientras se invocan sus métodos —solo lo tuvo durante el handshake— ni vive dentro de
+    /// un circuito Blazor, así que <c>ICurrentUser</c> no encuentra a nadie. El hub sí conoce
+    /// al usuario: lo tiene en <c>Context.User</c>.
+    /// <para>
+    /// Se agrega una sobrecarga en vez de que el hub consulte la membresía por su cuenta para
+    /// que la política de responder "no existe" a quien no pertenece —y no "no podés"— siga
+    /// escrita en un solo lugar.
+    /// </para>
+    /// </remarks>
+    Task<Result<Team>> RequireRoleAsync(
+        AppDbContext dbContext,
+        TeamKey key,
+        Guid userId,
+        TeamRole minimumRole,
+        bool tracking,
+        CancellationToken cancellationToken);
 }

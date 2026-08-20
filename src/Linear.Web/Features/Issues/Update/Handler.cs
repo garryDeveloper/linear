@@ -1,4 +1,5 @@
 using Linear.Domain.Common;
+using Linear.Domain.Issues;
 using Linear.Web.Features.Issues.Contracts;
 using Linear.Web.Infrastructure.Authorization;
 using Linear.Web.Infrastructure.Persistence;
@@ -31,6 +32,16 @@ public sealed class UpdateIssueHandler(
         }
 
         var issue = resolved.Value.Issue;
+
+        // Control de concurrencia: si el issue cambió desde que quien edita lo cargó, no se
+        // pisa. La tolerancia de un milisegundo la impone el viaje de ida y vuelta: la
+        // versión se serializa a JSON y PostgreSQL guarda microsegundos, así que exigir
+        // igualdad exacta rechazaría guardados legítimos por diferencias de redondeo.
+        if (request.ExpectedUpdatedAt is { } expected &&
+            (issue.UpdatedAt - expected).Duration() > TimeSpan.FromMilliseconds(1))
+        {
+            return Result.Failure<IssueResponse>(IssueErrors.ModifiedByAnother);
+        }
 
         var updated = issue.UpdateContent(request.Title, request.Description, DateTimeOffset.UtcNow);
 

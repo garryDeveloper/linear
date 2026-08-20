@@ -6,6 +6,7 @@
 @using Linear.Web.Features.Comments.Delete
 @using Linear.Web.Features.Comments.List
 @using Linear.Web.Features.Comments.Update
+@using Linear.Web.Shared.Realtime
 
 @inject ListCommentsHandler ListComments
 @inject CreateCommentHandler CreateComment
@@ -13,6 +14,9 @@
 @inject DeleteCommentHandler DeleteComment
 @inject IDialogService DialogService
 @inject ISnackbar Snackbar
+
+@* Los comentarios de otros aparecen solos, sin refrescar (task 014). *@
+<TeamRealtime Key="@Key" OnNotification="OnRealtimeAsync" />
 
 <section class="comments">
     <MudText Typo="Typo.subtitle2" Class="comments-heading">
@@ -193,6 +197,53 @@
         await LoadPageAsync(_page);
 
         _loading = false;
+        StateHasChanged();
+    }
+
+    /// <summary>
+    /// Reacciona a un comentario que escribió, editó o borró otra persona.
+    /// </summary>
+    /// <remarks>
+    /// Se filtra por issue —el aviso llega por equipo— y se recarga solo el hilo, no la
+    /// pantalla: la task 014 pide mantener a la persona donde estaba. El identificador viaja
+    /// en el aviso para poder descartarlo sin consultar la base.
+    /// </remarks>
+    private async Task OnRealtimeAsync(TeamNotification notification)
+    {
+        if (notification.Identifier != Identifier)
+        {
+            return;
+        }
+
+        if (notification.Event is not (RealtimeEvent.CommentCreated
+            or RealtimeEvent.CommentUpdated
+            or RealtimeEvent.CommentDeleted))
+        {
+            return;
+        }
+
+        await RefreshAsync();
+    }
+
+    /// <summary>
+    /// Vuelve a leer las páginas que ya estaban cargadas.
+    /// </summary>
+    /// <remarks>
+    /// A diferencia de <see cref="ReloadAsync"/>, no vuelve al principio ni cancela la
+    /// edición en curso: quien esté escribiendo una respuesta —o corrigiendo un comentario
+    /// propio— no tiene por qué perderla porque otro comentó.
+    /// </remarks>
+    private async Task RefreshAsync()
+    {
+        var pages = _page;
+
+        _comments.Clear();
+
+        for (var page = 1; page <= pages; page++)
+        {
+            await LoadPageAsync(page);
+        }
+
         StateHasChanged();
     }
 

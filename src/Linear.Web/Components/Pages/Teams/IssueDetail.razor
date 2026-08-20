@@ -27,6 +27,7 @@
 @using Linear.Web.Features.Teams.Contracts
 @using Linear.Web.Features.Teams.GetByKey
 @using Linear.Web.Shared.Pagination
+@using Linear.Web.Shared.Realtime
 
 @inject GetTeamByKeyHandler GetTeam
 @inject GetIssueByIdentifierHandler GetIssue
@@ -51,6 +52,10 @@
 @inject NavigationManager Navigation
 
 <PageTitle>@(_issue?.Identifier ?? Identifier) · Linear</PageTitle>
+
+@* El detalle se mantiene al día solo: lo que cambie otro integrante del equipo llega por
+   acá y se recarga sin refrescar la pantalla (task 014). *@
+<TeamRealtime Key="@Key" OnNotification="OnRealtimeAsync" />
 
 @if (_loading)
 {
@@ -88,6 +93,28 @@ else if (_issue is not null)
         </MudMenu>
     </MudStack>
 
+    @* Estrategia de conflictos de la V1: cuando llega un cambio ajeno y hay edición local
+       sin guardar, no se pisa el texto ni se adopta la versión nueva. Se avisa y decide la
+       persona. *@
+    @if (_conflict)
+    {
+        <MudAlert Severity="Severity.Warning" Dense="true" Variant="Variant.Outlined" Class="mb-3">
+            <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween" Spacing="2">
+                <span>Alguien más modificó este issue mientras lo editabas. Tus cambios sin guardar se conservan.</span>
+                <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="DiscardLocalChangesAsync">
+                    Descartar mis cambios
+                </MudButton>
+            </MudStack>
+        </MudAlert>
+    }
+
+    @if (_removed)
+    {
+        <MudAlert Severity="Severity.Error" Dense="true" Variant="Variant.Outlined" Class="mb-3">
+            Otro integrante eliminó este issue. Ya no existe.
+        </MudAlert>
+    }
+
     <div class="issue-detail">
         <div class="issue-detail-main">
             <MudTextField T="string" Value="_title"
@@ -101,7 +128,9 @@ else if (_issue is not null)
                en cada tecla: el resto del panel también guarda solo, pero acá escribir es
                una tarea larga y no tiene sentido mandar una petición por palabra. *@
             <div @onfocusout="SaveContentAsync">
-                <MarkdownEditor Value="_description"
+                @* El @ no es decorativo: Value es de tipo string, y sin él Razor toma el
+                   atributo como texto literal en vez de como expresión. *@
+                <MarkdownEditor Value="@_description"
                                 ValueChanged="OnDescriptionChanged"
                                 Rows="8"
                                 Placeholder="Agregar una descripción…" />
@@ -234,6 +263,12 @@ else if (_issue is not null)
     private IReadOnlyList<RoadmapItemOption> _assignableRoadmapItems = [];
     private Error? _error;
     private bool _loading = true;
+
+    /// <summary>Llegó un cambio ajeno sobre algo que esta pantalla tiene sin guardar.</summary>
+    private bool _conflict;
+
+    /// <summary>Otro integrante eliminó el issue que se está mirando.</summary>
+    private bool _removed;
 
     private bool CanDelete =>
         Enum.TryParse<TeamRole>(_team?.Role, out var role) && role >= TeamRole.Admin;
@@ -482,6 +517,61 @@ else if (_issue is not null)
         _title = issue.Title;
         _description = issue.Description;
         _labelIds = issue.Labels.Select(label => label.Id).ToArray();
+        _conflict = false;
+    }
+
+    /// <summary>Si hay texto escrito que todavía no se guardó.</summary>
+    private bool HasUnsavedEdits =>
+        _issue is not null && (_title != _issue.Title || _description != _issue.Description);
+
+    /// <summary>
+    /// Reacciona a un cambio hecho por otro integrante del equipo.
+    /// </summary>
+    /// <remarks>
+    /// Solo interesa lo que pasó sobre este issue: el aviso llega por equipo, y el equipo
+    /// tiene muchos. La comparación es por identificador legible porque es lo que esta
+    /// pantalla conoce por la ruta, y viaja en el aviso justamente para no tener que
+    /// consultar la base para descartarlo.
+    /// </remarks>
+    private async Task OnRealtimeAsync(TeamNotification notification)
+    {
+        if (notification.Identifier != Identifier)
+        {
+            return;
+        }
+
+        if (notification.Event is RealtimeEvent.IssueDeleted)
+        {
+            _removed = true;
+            StateHasChanged();
+            return;
+        }
+
+        if (notification.Event is not RealtimeEvent.IssueUpdated)
+        {
+            return;
+        }
+
+        // Con edición sin guardar no se recarga: hacerlo borraría lo que la persona está
+        // escribiendo. Tampoco se adopta la versión nueva —eso volvería aceptable un
+        // guardado que pisa el cambio ajeno—, así que al guardar el servidor lo va a
+        // rechazar y ella va a poder decidir.
+        if (HasUnsavedEdits)
+        {
+            _conflict = true;
+            StateHasChanged();
+            return;
+        }
+
+        await RefreshIssueAsync();
+    }
+
+    /// <summary>Tira la edición local y se queda con lo que hay guardado.</summary>
+    private async Task DiscardLocalChangesAsync()
+    {
+        _conflict = false;
+
+        await RefreshIssueAsync();
     }
 
     private Task OnTitleChanged(string value)
@@ -500,8 +590,26 @@ else if (_issue is not null)
     private async Task SaveContentAsync()
     {
         var result = await UpdateIssue.HandleAsync(
-            new UpdateIssueRequest { Key = Key, Identifier = Identifier, Title = _title, Description = _description },
+            new UpdateIssueRequest
+            {
+                Key = Key,
+                Identifier = Identifier,
+                Title = _title,
+                Description = _description,
+
+                // La versión que tenía a la vista quien edita. Si el issue cambió desde
+                // entonces, el servidor rechaza el guardado en vez de pisar lo ajeno.
+                ExpectedUpdatedAt = _issue?.UpdatedAt
+            },
             _cancellation.Token);
+
+        if (result.IsFailure && result.Error == IssueErrors.ModifiedByAnother)
+        {
+            _conflict = true;
+            Snackbar.Add(result.Error.Description, Severity.Warning);
+            StateHasChanged();
+            return;
+        }
 
         HandleResult(result, showToast: false);
     }

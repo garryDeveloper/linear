@@ -18,6 +18,19 @@ public static class IssueErrors
     public static readonly Error AlreadyArchived =
         Error.Conflict("Issues.AlreadyArchived", "El issue ya está archivado.");
 
+    /// <summary>
+    /// El issue cambió entre que quien edita lo cargó y que intentó guardar.
+    /// </summary>
+    /// <remarks>
+    /// Es la estrategia de conflictos de la V1: el que llega segundo no pisa al primero en
+    /// silencio, se entera. Deliberadamente no se intenta fusionar los dos cambios —eso es
+    /// edición colaborativa, que la task 014 excluye—: se le devuelve el control a la
+    /// persona, que es la única que sabe si su versión sigue teniendo sentido.
+    /// </remarks>
+    public static readonly Error ModifiedByAnother = Error.Conflict(
+        "Issues.ModifiedByAnother",
+        "Alguien más modificó este issue mientras lo editabas. Revisá los cambios antes de guardar.");
+
     public static readonly Error Archived = Error.Conflict(
         "Issues.Archived",
         "El issue está archivado. Desarchivalo antes de modificarlo.");

@@ -28,9 +28,22 @@ public sealed class CurrentUser(
             return null;
         }
 
-        var state = await stateProvider.GetAuthenticationStateAsync().WaitAsync(cancellationToken);
+        try
+        {
+            var state = await stateProvider.GetAuthenticationStateAsync().WaitAsync(cancellationToken);
 
-        return state.User;
+            return state.User;
+        }
+        catch (InvalidOperationException)
+        {
+            // El proveedor de Blazor exige que se lo consulte dentro del ámbito de un
+            // componente y lanza si no. Eso ocurre cuando algo guarda datos fuera de la
+            // interfaz y fuera de un request: la siembra al arrancar, un test que prepara
+            // su escenario. Ahí la respuesta correcta es "no hay nadie", no una excepción:
+            // quien pregunta ya contempla el caso —el historial no registra sin actor— y
+            // hacerlo estallar convertiría la falta de sesión en una falla de la operación.
+            return null;
+        }
     }
 
     public async ValueTask<Result<Guid>> RequireIdAsync(CancellationToken cancellationToken)

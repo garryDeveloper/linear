@@ -6,11 +6,15 @@
 @using Linear.Web.Features.Teams.Contracts
 @using Linear.Web.Features.Teams.GetByKey
 @using Linear.Web.Shared.Pagination
+@using Linear.Web.Shared.Realtime
 
 @inject GetTeamByKeyHandler GetTeam
 @inject ListTeamActivityHandler ListActivity
 
 <PageTitle>Actividad · Linear</PageTitle>
+
+@* El feed se completa solo mientras el equipo trabaja (task 014). *@
+<TeamRealtime Key="@Key" OnNotification="OnRealtimeAsync" />
 
 <TeamPageHeader Team="_team" TeamKey="@Key" />
 
@@ -97,6 +101,21 @@ else if (_page is not null)
         await ReloadAsync();
 
         _loading = false;
+        StateHasChanged();
+    }
+
+    /// <summary>
+    /// Trae la actividad nueva sin sacar a la persona de la página que está leyendo.
+    /// </summary>
+    private async Task OnRealtimeAsync(TeamNotification notification)
+    {
+        if (notification.Event is not RealtimeEvent.ActivityCreated)
+        {
+            return;
+        }
+
+        await ReloadAsync();
+
         StateHasChanged();
     }
 

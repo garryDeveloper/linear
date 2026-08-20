@@ -7,6 +7,7 @@
 @using Linear.Web.Features.Teams.Contracts
 @using Linear.Web.Features.Teams.GetByKey
 @using Linear.Web.Shared.Pagination
+@using Linear.Web.Shared.Realtime
 
 @inject GetTeamByKeyHandler GetTeam
 @inject ListSprintsHandler ListSprints
@@ -14,6 +15,9 @@
 @inject NavigationManager Navigation
 
 <PageTitle>Sprints · Linear</PageTitle>
+
+@* Los sprints que arranca, completa o edita el resto del equipo se ven al toque (task 014). *@
+<TeamRealtime Key="@Key" OnNotification="OnRealtimeAsync" />
 
 <TeamPageHeader Team="_team" TeamKey="@Key" />
 
@@ -67,7 +71,7 @@ else if (_page is not null)
             <MudPaper Outlined="true" Class="sprint-list">
                 @foreach (var sprint in _page.Items)
                 {
-                    <div class="sprint-row" @onclick="() => OpenSprint(sprint.Id)">
+                    <div class="sprint-row" @key="sprint.Id" @onclick="() => OpenSprint(sprint.Id)">
                         <div class="sprint-row-main">
                             <div class="sprint-row-title">
                                 <MudText Typo="Typo.body2" Class="sprint-row-name">@sprint.Name</MudText>
@@ -155,6 +159,19 @@ else if (_page is not null)
         await ReloadSprintsAsync();
 
         _loading = false;
+        StateHasChanged();
+    }
+
+    /// <summary>Refleja los cambios de sprint que hizo otro integrante.</summary>
+    private async Task OnRealtimeAsync(TeamNotification notification)
+    {
+        if (notification.Event is not RealtimeEvent.SprintUpdated)
+        {
+            return;
+        }
+
+        await ReloadSprintsAsync();
+
         StateHasChanged();
     }
 

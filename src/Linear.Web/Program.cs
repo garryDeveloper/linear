@@ -9,6 +9,7 @@ using Linear.Web.Features;
 using Linear.Web.Infrastructure.Authentication;
 using Linear.Web.Infrastructure.Authorization;
 using Linear.Web.Infrastructure.Persistence;
+using Linear.Web.Infrastructure.Realtime;
 
 using MudBlazor.Services;
 
@@ -35,6 +36,9 @@ builder.Services.AddPersistence(builder.Configuration, builder.Environment);
 builder.Services.Configure<SeedOptions>(builder.Configuration.GetSection(SeedOptions.SectionName));
 builder.Services.AddScoped<DatabaseSeeder>();
 builder.Services.AddScoped<SampleDataSeeder>();
+
+// Tiempo real
+builder.Services.AddRealtime();
 
 // Autenticación y autorización
 builder.Services.AddAppAuthentication(builder.Environment, builder.Configuration);
@@ -79,6 +83,10 @@ app.MapStaticAssets()
 
 app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode();
+
+// El hub queda detrás de la autenticación por cookie, igual que el resto: una conexión
+// anónima se rechaza en el handshake y nunca llega a pedir una suscripción.
+app.MapHub<TeamHub>(TeamHub.Route);
 
 await SeedDatabaseAsync(app);
 

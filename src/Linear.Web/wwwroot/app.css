@@ -76,3 +76,20 @@ h1:focus {
 .add-member-email-field {
     margin-top: 0 !important;
 }
+
+/* Por debajo del punto de corte, AppSidebar vuelve la barra lateral Temporary: se superpone
+   al contenido en lugar de empujarlo (ver el comentario de ese componente). MudBlazor, sin
+   embargo, le sigue reservando el ancho de la barra al contenido y a la cabecera, así que la
+   página quedaba 224px más ancha que la pantalla y scrolleaba de costado en un teléfono —el
+   listado de issues, con 151px útiles, no entraba—.
+   El punto de corte es el mismo Breakpoint.Md que usa el componente: si se cambia uno, hay
+   que cambiar el otro. Va con !important por el mismo motivo que las reglas de arriba: lo que
+   se está pisando también lo lleva. */
+@media (max-width: 959.98px) {
+    .mud-layout .mud-main-content,
+    .mud-layout > .mud-appbar {
+        margin-left: 0 !important;
+        margin-right: 0 !important;
+        width: 100% !important;
+    }
+}

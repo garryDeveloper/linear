@@ -84,6 +84,9 @@
                     Name = _name,
                     Description = _description
                 },
+                // Sin token a propósito: esto escribe. El resto de la aplicación cancela sus
+                // lecturas al cerrarse el componente, pero abortar un guardado porque se cerró
+                // el diálogo dejaría a medias algo que la persona pidió.
                 CancellationToken.None)
             : await CreateRoadmap.HandleAsync(
                 new CreateRoadmapRequest

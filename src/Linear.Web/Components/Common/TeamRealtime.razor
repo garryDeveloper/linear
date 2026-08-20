@@ -1,0 +1,72 @@
+@implements IAsyncDisposable
+
+@using Linear.Web.Infrastructure.Realtime
+@using Linear.Web.Shared.Realtime
+
+@inject TeamRealtimeSubscriber Subscriber
+
+@* No dibuja nada: existe para que una pantalla se suscriba a los cambios de su equipo
+   escribiendo una línea, en vez de repetir en cada página el alta, la baja y el salto al
+   hilo del renderizador. La task 014 pide que el estado se actualice sin refrescar la
+   pantalla entera; quién decide qué recargar es cada pantalla, y por eso esto solo avisa. *@
+
+@code {
+    private readonly CancellationTokenSource _cancellation = new();
+
+    private IDisposable? _subscription;
+    private string? _subscribedTo;
+
+    /// <summary>Clave del equipo cuyos cambios interesan.</summary>
+    [Parameter]
+    public string Key { get; set; } = string.Empty;
+
+    /// <summary>Qué hacer con cada aviso.</summary>
+    [Parameter]
+    public EventCallback<TeamNotification> OnNotification { get; set; }
+
+    /// <summary>
+    /// Si el propio autor del cambio debe recibir su eco. Por omisión no: su pantalla ya se
+    /// actualizó con la respuesta de la operación.
+    /// </summary>
+    [Parameter]
+    public bool IncludeOwnChanges { get; set; }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (_subscribedTo == Key)
+        {
+            return;
+        }
+
+        // Navegar de un equipo a otro reusa el componente: hay que soltar la suscripción
+        // vieja antes de tomar la nueva, o la pantalla recibiría avisos de los dos.
+        _subscription?.Dispose();
+        _subscription = null;
+        _subscribedTo = Key;
+
+        if (string.IsNullOrWhiteSpace(Key))
+        {
+            return;
+        }
+
+        _subscription = await Subscriber.SubscribeAsync(Key, HandleAsync, _cancellation.Token, IncludeOwnChanges);
+    }
+
+    /// <summary>
+    /// Recibe el aviso, que llega en el hilo de quien guardó el cambio —otro usuario— y no
+    /// en el del circuito de esta pantalla. <c>InvokeAsync</c> lo cruza al despachador del
+    /// renderizador: tocar el estado de un componente desde afuera es una carrera.
+    /// </summary>
+    private Task HandleAsync(TeamNotification notification) =>
+        InvokeAsync(() => OnNotification.InvokeAsync(notification));
+
+    public async ValueTask DisposeAsync()
+    {
+        await _cancellation.CancelAsync();
+        _cancellation.Dispose();
+
+        // Sin esto el componente queda referenciado desde un servicio singleton y sobrevive
+        // al circuito que lo creó.
+        _subscription?.Dispose();
+    }
+}
