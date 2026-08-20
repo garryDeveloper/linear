@@ -2,7 +2,7 @@
 @inject NavigationManager Navigation
 
 @* Nunca dos niveles de navegación a la vez: dentro de un equipo, la barra lateral
-   muestra sus secciones (Issues, Sprints, Roadmap, Miembros, Labels, Configuración) en lugar de
+   muestra sus secciones (Issues, Sprints, Roadmap, Actividad, Miembros, Labels, Configuración)
    Equipos/Configuración generales — TeamPageHeader dejó de dibujarlas como pestañas.
    Todas las secciones del equipo cuelgan de acá. *@
 <MudDrawer Open="Open"
@@ -28,6 +28,11 @@
                         Match="NavLinkMatch.Prefix"
                         Icon="@Icons.Material.Rounded.Timeline">
                 Roadmap
+            </MudNavLink>
+            <MudNavLink Href="@($"/teams/{key}/activity")"
+                        Match="NavLinkMatch.Prefix"
+                        Icon="@Icons.Material.Rounded.History">
+                Actividad
             </MudNavLink>
             <MudNavLink Href="@($"/teams/{key}/members")"
                         Match="NavLinkMatch.Prefix"

@@ -157,6 +157,70 @@ A diferencia de `Issue` o `Label`, el modelo de dominio ubica `Comment` dentro d
 `Issue`. Acá es raíz propia: la colección crece sin techo, y cargarla entera cada vez que se
 abre un issue chocaría con la paginación obligatoria de los listados.
 
+## Actividad
+
+Historial de lo que hace el equipo, con dos vistas: el feed del equipo
+(`/teams/{clave}/activity`) y el historial de cada issue, debajo de sus comentarios.
+
+Se registran las acciones que define la task 011: crear, editar, asignar, completar y
+cancelar issues; crear y editar comentarios; agregar y quitar labels; iniciar y completar
+sprints; y crear y actualizar iniciativas del roadmap. **Nada más**: crear un sprint, cambiar
+una prioridad o archivar un issue no dejan registro, porque el vocabulario no define una
+acción para eso. Como el historial es append-only, inventar términos sería agregar algo que
+después no se puede corregir.
+
+### Append-only, de verdad
+
+`Activity` no expone un solo método que la modifique, ni siquiera interno, y no hay endpoint
+de escritura: solo se lee. El historial sobrevive a lo que describe — eliminar un issue no
+borra lo que quedó registrado sobre él, que es justamente lo que lo vuelve útil para
+auditar. Solo se va con el equipo, por la clave foránea en cascada.
+
+### Cómo se registra, sin tocar cada feature
+
+La task pide un mecanismo común y evitar acoplar Activity a cada slice. Acá **ningún handler
+menciona Activity**: no lo hacían antes de esta task y no lo hacen después.
+
+El registro se arma en dos partes:
+
+1. **El agregado levanta el evento**, en el método donde ocurre la acción. Es el único lugar
+   donde se sabe qué significó el cambio: pasar un issue a `Done` es *completarlo*, no
+   "editar el estado", y mirar la fila resultante no permite distinguirlo. Por eso la
+   decisión vive en el dominio y no en un interceptor que compare columnas.
+2. **Un interceptor de `SaveChanges`** convierte esos eventos en filas, completando el actor
+   —que el dominio no conoce— y el equipo cuando hace falta.
+
+La consecuencia que importa: el registro se inserta **en la misma transacción** que el
+cambio. O se guardan los dos, o no se guarda ninguno; un historial que puede quedar
+desfasado del dato que describe no serviría para auditar. Un interceptor lo garantiza; un
+servicio llamado desde el handler, no.
+
+Agregar una acción nueva es levantar un evento donde ocurre. No hay que acordarse de tocar
+el slice, y un agregado nuevo solo tiene que implementar `IHasActivity`.
+
+Sin sesión no se registra nada: el seeder y las migraciones crean datos sin usuario detrás, e
+inventarle un actor al historial sería peor que no tenerlo.
+
+### El historial de un issue incluye sus comentarios
+
+Una actividad de comentario apunta al comentario, no al issue, así que no se puede pedir por
+`EntityId`. El issue al que pertenece viaja dentro del payload, y la consulta lo busca ahí
+con el operador de contención de `jsonb` (`@>`), que entra por un índice GIN.
+
+Es la razón por la que `PayloadJson` es `jsonb` y no texto: permite filtrar por dentro sin
+agregarle a la tabla una columna que la task no define.
+
+El payload se guarda como JSON y no como columnas porque cada acción tiene su propia forma
+—un cambio de estado lleva valor viejo y nuevo, una label lleva su identificador— y forzarlas
+a un esquema común llenaría la tabla de nulos.
+
+### La frase se arma en la interfaz
+
+El historial guarda **qué pasó**, no cómo se cuenta. Convertir una entrada en «Ana completó
+el issue · En curso → Hecho» es presentación, y dejarlo así permite reformularlo o traducirlo
+sin migrar datos — importante en una tabla que no se puede reescribir. Una acción que la
+interfaz no conozca se muestra igual con su nombre crudo, en vez de desaparecer del feed.
+
 ## Búsqueda
 
 Buscador global de issues, con `Ctrl+K` (o `Cmd+K`) desde cualquier pantalla. Busca en el

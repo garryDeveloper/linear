@@ -1,3 +1,5 @@
+using Linear.Web.Infrastructure.Activities;
+
 using Microsoft.EntityFrameworkCore;
 
 namespace Linear.Web.Infrastructure.Persistence;
@@ -39,17 +41,27 @@ public static class PersistenceServiceCollectionExtensions
                 $"'ConnectionStrings__{ConnectionStringName}'.");
         }
 
-        services.AddDbContextFactory<AppDbContext>(options =>
-        {
-            options.UseNpgsql(connectionString, npgsql => npgsql
-                .MigrationsAssembly(typeof(AppDbContext).Assembly.FullName));
+        services.AddScoped<ActivityInterceptor>();
 
-            if (environment.IsDevelopment())
+        // La fábrica es Scoped y no Singleton —el valor por omisión— porque el interceptor
+        // de actividad necesita saber quién está operando, y esa identidad vive en el ámbito
+        // del circuito. Una fábrica singleton no podría resolverlo. Los contextos siguen
+        // creándose y descartándose por operación, que es lo que importa.
+        services.AddDbContextFactory<AppDbContext>(
+            (provider, options) =>
             {
-                options.EnableDetailedErrors();
-                options.EnableSensitiveDataLogging();
-            }
-        });
+                options.UseNpgsql(connectionString, npgsql => npgsql
+                    .MigrationsAssembly(typeof(AppDbContext).Assembly.FullName));
+
+                options.AddInterceptors(provider.GetRequiredService<ActivityInterceptor>());
+
+                if (environment.IsDevelopment())
+                {
+                    options.EnableDetailedErrors();
+                    options.EnableSensitiveDataLogging();
+                }
+            },
+            ServiceLifetime.Scoped);
 
         services.AddScoped(provider => provider
             .GetRequiredService<IDbContextFactory<AppDbContext>>()

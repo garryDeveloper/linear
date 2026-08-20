@@ -107,6 +107,8 @@ else if (_issue is not null)
             @* La conversación se carga sola, aparte del issue: es un listado paginado con
                su propio ciclo de vida, y no tiene por qué demorar el detalle. *@
             <IssueComments Key="@Key" Identifier="@_issue.Identifier" />
+
+            <IssueActivity Key="@Key" Identifier="@_issue.Identifier" />
         </div>
 
         <div class="issue-detail-panel">

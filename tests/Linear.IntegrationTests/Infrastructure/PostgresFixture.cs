@@ -49,7 +49,7 @@ public sealed class PostgresFixture : IAsyncLifetime
         await using var dbContext = CreateDbContext();
 
         await dbContext.Database.ExecuteSqlRawAsync(
-            """TRUNCATE TABLE "Users", "Teams", "Labels", "Issues", "Comments", "Sprints", "Roadmaps" CASCADE;""");
+            """TRUNCATE TABLE "Users", "Teams", "Labels", "Issues", "Comments", "Sprints", "Roadmaps", "Activities" CASCADE;""");
     }
 
     private AppDbContext CreateDbContext() =>

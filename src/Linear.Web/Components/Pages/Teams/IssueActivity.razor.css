@@ -1,0 +1,15 @@
+.issue-activity {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.issue-activity-heading {
+    border-top: 1px solid var(--mud-palette-lines-default);
+    color: var(--mud-palette-text-secondary);
+    padding-top: 1rem;
+}
+
+.issue-activity-empty {
+    font-size: 0.8125rem;
+}

@@ -1,3 +1,4 @@
+using Linear.Domain.Activities;
 using Linear.Domain.Common;
 
 namespace Linear.Domain.Sprints;
@@ -15,10 +16,12 @@ namespace Linear.Domain.Sprints;
 /// —una entidad no ve a sus hermanas—, así que vive donde sí es infalsificable: un índice
 /// único parcial en la base. Ver <c>SprintConfiguration</c>.
 /// </remarks>
-public sealed class Sprint
+public sealed class Sprint : IHasActivity
 {
     public const int MaxNameLength = 100;
     public const int MaxGoalLength = 500;
+
+    private readonly List<ActivityEvent> _activity = [];
 
     /// <summary>Requerido por EF Core para materializar la entidad.</summary>
     private Sprint()
@@ -136,6 +139,8 @@ public sealed class Sprint
         Status = SprintStatus.Active;
         UpdatedAt = now;
 
+        Record(ActivityAction.SprintStarted);
+
         return Result.Success();
     }
 
@@ -149,6 +154,8 @@ public sealed class Sprint
         Status = SprintStatus.Completed;
         CompletedAt = now;
         UpdatedAt = now;
+
+        Record(ActivityAction.SprintCompleted);
 
         return Result.Success();
     }
@@ -172,6 +179,30 @@ public sealed class Sprint
 
         return Result.Success();
     }
+
+    /// <inheritdoc />
+    public IReadOnlyList<ActivityEvent> PendingActivity => _activity.AsReadOnly();
+
+    /// <inheritdoc />
+    public void ClearActivity() => _activity.Clear();
+
+    /// <summary>
+    /// Registra iniciar y completar el sprint.
+    /// </summary>
+    /// <remarks>
+    /// Solo esas dos: son las que define la task 011. Crear, editar y cancelar no tienen
+    /// acción en el vocabulario, y como el historial es append-only, inventarlas sería
+    /// agregar términos que después no se pueden corregir.
+    /// </remarks>
+    private void Record(ActivityAction action) =>
+        _activity.Add(new ActivityEvent
+        {
+            EntityType = ActivityEntityType.Sprint,
+            EntityId = Id,
+            Action = action,
+            TeamId = TeamId,
+            Payload = new Dictionary<string, string?> { ["name"] = Name }
+        });
 
     private static Result Validate(string name, string? goal, DateOnly startDate, DateOnly endDate) =>
         ValidateName(name)

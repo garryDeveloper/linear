@@ -1,3 +1,4 @@
+using Linear.Domain.Activities;
 using Linear.Domain.Common;
 
 namespace Linear.Domain.Roadmaps;
@@ -15,12 +16,13 @@ namespace Linear.Domain.Roadmaps;
 ///
 /// Los issues asociados no están acá: es el issue el que guarda su <c>RoadmapItemId</c>.
 /// </remarks>
-public sealed class Roadmap
+public sealed class Roadmap : IHasActivity
 {
     public const int MaxNameLength = 100;
     public const int MaxDescriptionLength = 500;
 
     private readonly List<RoadmapItem> _items = [];
+    private readonly List<ActivityEvent> _activity = [];
 
     /// <summary>Requerido por EF Core para materializar la entidad.</summary>
     private Roadmap()
@@ -100,6 +102,8 @@ public sealed class Roadmap
         _items.Add(item);
         UpdatedAt = now;
 
+        Record(ActivityAction.RoadmapItemCreated, item);
+
         return Result.Success(item);
     }
 
@@ -126,6 +130,8 @@ public sealed class Roadmap
         }
 
         UpdatedAt = now;
+
+        Record(ActivityAction.RoadmapItemUpdated, item);
 
         return Result.Success();
     }
@@ -161,6 +167,37 @@ public sealed class Roadmap
     }
 
     public RoadmapItem? FindItem(Guid itemId) => _items.FirstOrDefault(item => item.Id == itemId);
+
+    /// <inheritdoc />
+    public IReadOnlyList<ActivityEvent> PendingActivity => _activity.AsReadOnly();
+
+    /// <inheritdoc />
+    public void ClearActivity() => _activity.Clear();
+
+    /// <summary>
+    /// Registra la actividad de una iniciativa.
+    /// </summary>
+    /// <remarks>
+    /// La entidad afectada es la iniciativa, no el roadmap: es lo que se nombra en el feed.
+    /// El evento lo levanta igual la raíz, porque las iniciativas se modifican a través de
+    /// ella. Cambiar el estado no lleva acción propia —la task 011 solo define
+    /// <c>RoadmapItemUpdated</c>— y por eso va junto con el resto de la edición.
+    /// </remarks>
+    private void Record(ActivityAction action, RoadmapItem item) =>
+        _activity.Add(new ActivityEvent
+        {
+            EntityType = ActivityEntityType.RoadmapItem,
+            EntityId = item.Id,
+            Action = action,
+            TeamId = TeamId,
+            Payload = new Dictionary<string, string?>
+            {
+                ["name"] = item.Name,
+                ["roadmapId"] = Id.ToString(),
+                ["roadmapName"] = Name,
+                ["status"] = item.Status.ToString()
+            }
+        });
 
     private static Result Validate(string name, string? description) =>
         ValidateName(name).Then(() => ValidateDescription(description));

@@ -1,0 +1,132 @@
+@implements IDisposable
+
+@using Linear.Web.Features.Activities.Contracts
+@using Linear.Web.Features.Activities.ListIssueActivity
+@using Linear.Web.Shared.Pagination
+
+@inject ListIssueActivityHandler ListActivity
+
+@* Historial del issue. Se carga aparte del detalle, igual que los comentarios: es un listado
+   paginado con su propio ciclo de vida y no tiene por qué demorar la pantalla. *@
+<section class="issue-activity">
+    <MudText Typo="Typo.subtitle2" Class="issue-activity-heading">
+        Actividad@(_totalCount > 0 ? $" · {_totalCount}" : string.Empty)
+    </MudText>
+
+    @if (_loading)
+    {
+        <MudSkeleton Height="80px" />
+    }
+    else if (_error is not null)
+    {
+        <MudAlert Severity="Severity.Error" Dense="true" Variant="Variant.Outlined">
+            @_error.Description
+        </MudAlert>
+    }
+    else if (_activities.Count == 0)
+    {
+        <MudText Typo="Typo.body2" Color="Color.Secondary" Class="issue-activity-empty">
+            Todavía no hay actividad registrada.
+        </MudText>
+    }
+    else
+    {
+        <ActivityList Activities="_activities" TeamKey="@Key" ShowIssue="false" />
+
+        @if (_hasMore)
+        {
+            <MudButton Variant="Variant.Text"
+                       Size="Size.Small"
+                       Disabled="_busy"
+                       OnClick="LoadMoreAsync"
+                       Class="align-self-start">
+                Ver actividad anterior
+            </MudButton>
+        }
+    }
+</section>
+
+@code {
+    private const int PageSize = 25;
+
+    private readonly CancellationTokenSource _cancellation = new();
+    private readonly List<ActivityResponse> _activities = [];
+
+    [Parameter, EditorRequired]
+    public required string Key { get; set; }
+
+    [Parameter, EditorRequired]
+    public required string Identifier { get; set; }
+
+    private Error? _error;
+    private bool _loading = true;
+    private bool _busy;
+    private int _page = 1;
+    private int _totalCount;
+    private bool _hasMore;
+    private string? _loadedFor;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        var route = $"{Key}/{Identifier}";
+
+        if (_loadedFor == route)
+        {
+            return;
+        }
+
+        _loadedFor = route;
+
+        _loading = true;
+        _error = null;
+        _page = 1;
+        _activities.Clear();
+        StateHasChanged();
+
+        await LoadPageAsync(_page);
+
+        _loading = false;
+        StateHasChanged();
+    }
+
+    private async Task LoadMoreAsync()
+    {
+        _busy = true;
+        StateHasChanged();
+
+        await LoadPageAsync(_page + 1);
+
+        _busy = false;
+        StateHasChanged();
+    }
+
+    private async Task LoadPageAsync(int page)
+    {
+        var result = await ListActivity.HandleAsync(
+            new ListIssueActivityRequest
+            {
+                Key = Key,
+                Identifier = Identifier,
+                Page = page,
+                PageSize = PageSize
+            },
+            _cancellation.Token);
+
+        if (result.IsFailure)
+        {
+            _error = result.Error;
+            return;
+        }
+
+        _page = result.Value.Page;
+        _totalCount = result.Value.TotalCount;
+        _hasMore = result.Value.HasNextPage;
+        _activities.AddRange(result.Value.Items);
+    }
+
+    public void Dispose()
+    {
+        _cancellation.Cancel();
+        _cancellation.Dispose();
+    }
+}

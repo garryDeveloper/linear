@@ -1,3 +1,4 @@
+using Linear.Domain.Activities;
 using Linear.Domain.Common;
 
 namespace Linear.Domain.Comments;
@@ -18,7 +19,7 @@ namespace Linear.Domain.Comments;
 /// el renderizado y la sanitización son de la task 012. Guardar el texto crudo es
 /// justamente lo que deja implementarla después sin migrar datos.
 /// </remarks>
-public sealed class Comment
+public sealed class Comment : IHasActivity
 {
     /// <summary>
     /// A diferencia de <c>Issue.Description</c>, que no tiene tope, un comentario sí lo
@@ -26,6 +27,8 @@ public sealed class Comment
     /// generoso acota el abuso sin estorbar a nadie que esté comentando de buena fe.
     /// </summary>
     public const int MaxContentLength = 10_000;
+
+    private readonly List<ActivityEvent> _activity = [];
 
     /// <summary>Requerido por EF Core para materializar la entidad.</summary>
     private Comment()
@@ -85,7 +88,11 @@ public sealed class Comment
             return Result.Failure<Comment>(validation.Error);
         }
 
-        return Result.Success(new Comment(Guid.CreateVersion7(), issueId, authorId, content, now));
+        var comment = new Comment(Guid.CreateVersion7(), issueId, authorId, content, now);
+
+        comment.Record(ActivityAction.CommentCreated);
+
+        return Result.Success(comment);
     }
 
     public Result UpdateContent(string content, DateTimeOffset now)
@@ -105,6 +112,8 @@ public sealed class Comment
         Content = content.Trim();
         UpdatedAt = now;
 
+        Record(ActivityAction.CommentUpdated);
+
         return Result.Success();
     }
 
@@ -121,6 +130,32 @@ public sealed class Comment
     }
 
     public bool IsAuthoredBy(Guid userId) => AuthorId == userId;
+
+    /// <inheritdoc />
+    public IReadOnlyList<ActivityEvent> PendingActivity => _activity.AsReadOnly();
+
+    /// <inheritdoc />
+    public void ClearActivity() => _activity.Clear();
+
+    /// <summary>
+    /// Registra la actividad del comentario.
+    /// </summary>
+    /// <remarks>
+    /// Sin equipo: un comentario solo conoce su issue. Lo resuelve la infraestructura al
+    /// guardar, siguiendo el <see cref="IssueId"/> — que además es lo que hace que el
+    /// comentario aparezca en el historial del issue y no solo en el del equipo.
+    ///
+    /// Eliminar no registra actividad: la task 011 no lista una acción para eso, y como el
+    /// historial es append-only, inventarla sería agregar vocabulario que nadie definió.
+    /// </remarks>
+    private void Record(ActivityAction action) =>
+        _activity.Add(new ActivityEvent
+        {
+            EntityType = ActivityEntityType.Comment,
+            EntityId = Id,
+            Action = action,
+            IssueId = IssueId
+        });
 
     private static Result ValidateContent(string content) => content switch
     {

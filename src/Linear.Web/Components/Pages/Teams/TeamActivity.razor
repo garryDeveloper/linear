@@ -1,0 +1,131 @@
+@page "/teams/{Key}/activity"
+@implements IDisposable
+
+@using Linear.Web.Features.Activities.Contracts
+@using Linear.Web.Features.Activities.ListTeamActivity
+@using Linear.Web.Features.Teams.Contracts
+@using Linear.Web.Features.Teams.GetByKey
+@using Linear.Web.Shared.Pagination
+
+@inject GetTeamByKeyHandler GetTeam
+@inject ListTeamActivityHandler ListActivity
+
+<PageTitle>Actividad · Linear</PageTitle>
+
+<TeamPageHeader Team="_team" TeamKey="@Key" />
+
+@if (_loading)
+{
+    <MudSkeleton Height="220px" />
+}
+else if (_error is not null)
+{
+    <MudAlert Severity="Severity.Error" Dense="true" Variant="Variant.Outlined">
+        @_error.Description
+    </MudAlert>
+}
+else if (_page is not null)
+{
+    <MudStack Spacing="4">
+        @if (_page.Items.Count == 0)
+        {
+            <MudPaper Outlined="true" Class="pa-8">
+                <MudStack AlignItems="AlignItems.Center" Spacing="2">
+                    <MudIcon Icon="@Icons.Material.Rounded.History" Size="Size.Large" Color="Color.Secondary" />
+                    <MudText Typo="Typo.h4">Sin actividad todavía</MudText>
+                    <MudText Typo="Typo.body2" Color="Color.Secondary" Align="Align.Center">
+                        Acá va quedando lo que hace el equipo: issues, comentarios, sprints e iniciativas.
+                    </MudText>
+                </MudStack>
+            </MudPaper>
+        }
+        else
+        {
+            <MudPaper Outlined="true" Class="px-4 py-2">
+                <ActivityList Activities="_page.Items" TeamKey="@Key" />
+            </MudPaper>
+        }
+
+        @if (_page.TotalPages > 1)
+        {
+            <MudPagination Count="_page.TotalPages"
+                           Selected="_currentPage"
+                           SelectedChanged="GoToPageAsync"
+                           Size="Size.Small" />
+        }
+    </MudStack>
+}
+
+@code {
+    private readonly CancellationTokenSource _cancellation = new();
+
+    [Parameter]
+    public string Key { get; set; } = string.Empty;
+
+    private TeamResponse? _team;
+    private PagedResult<ActivityResponse>? _page;
+    private Error? _error;
+    private bool _loading = true;
+    private int _currentPage = 1;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (_team?.Key != Key)
+        {
+            await LoadAsync();
+        }
+    }
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        _error = null;
+        StateHasChanged();
+
+        var team = await GetTeam.HandleAsync(Key, _cancellation.Token);
+
+        if (team.IsFailure)
+        {
+            _error = team.Error;
+            _loading = false;
+            StateHasChanged();
+            return;
+        }
+
+        _team = team.Value;
+
+        await ReloadAsync();
+
+        _loading = false;
+        StateHasChanged();
+    }
+
+    private async Task ReloadAsync()
+    {
+        var result = await ListActivity.HandleAsync(
+            new ListTeamActivityRequest { Key = Key, Page = _currentPage },
+            _cancellation.Token);
+
+        if (result.IsSuccess)
+        {
+            _page = result.Value;
+        }
+        else
+        {
+            _error = result.Error;
+        }
+    }
+
+    private async Task GoToPageAsync(int page)
+    {
+        _currentPage = page;
+        await ReloadAsync();
+        StateHasChanged();
+    }
+
+    public void Dispose()
+    {
+        _cancellation.Cancel();
+        _cancellation.Dispose();
+    }
+}

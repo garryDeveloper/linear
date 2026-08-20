@@ -1,3 +1,4 @@
+using Linear.Domain.Activities;
 using Linear.Domain.Common;
 
 namespace Linear.Domain.Issues;
@@ -8,17 +9,20 @@ namespace Linear.Domain.Issues;
 /// <remarks>
 /// Es la raíz de su propio agregado, no parte del agregado <c>Team</c>: se consulta y pagina
 /// por su cuenta, y referencia al equipo, al responsable y a quien lo creó solo por
-/// identificador. <c>SprintId</c> y <c>RoadmapItemId</c> no existen todavía —Sprint y
-/// RoadmapItem son de las tasks 007 y 010— así que se suman cuando esas entidades existan,
-/// en vez de guardar una referencia a una tabla que no está.
+/// identificador, igual que al sprint y a la iniciativa del roadmap.
+///
+/// Registra su propia actividad: es en cada método donde se sabe qué significó el cambio
+/// —completar no es lo mismo que mover de estado—, y esa intención no se puede reconstruir
+/// mirando la fila después.
 /// </remarks>
-public sealed class Issue
+public sealed class Issue : IHasActivity
 {
     public const int MaxTitleLength = 200;
     public const int MinEstimate = 0;
     public const int MaxEstimate = 999;
 
     private readonly List<IssueLabel> _labels = [];
+    private readonly List<ActivityEvent> _activity = [];
 
     /// <summary>Requerido por EF Core para materializar la entidad.</summary>
     private Issue()
@@ -120,14 +124,22 @@ public sealed class Issue
             return Result.Failure<Issue>(validation.Error);
         }
 
-        return Result.Success(new Issue(
+        var issue = new Issue(
             Guid.CreateVersion7(),
             identifier,
             teamId,
             title,
             description,
             createdById,
-            now));
+            now);
+
+        issue.Record(ActivityAction.IssueCreated, new Dictionary<string, string?>
+        {
+            ["identifier"] = issue.Identifier.Value,
+            ["title"] = issue.Title
+        });
+
+        return Result.Success(issue);
     }
 
     public Result UpdateContent(string title, string? description, DateTimeOffset now)
@@ -139,9 +151,18 @@ public sealed class Issue
             return validation;
         }
 
+        var previousTitle = Title;
+
         Title = title.Trim();
         Description = NormalizeDescription(description);
         UpdatedAt = now;
+
+        Record(ActivityAction.IssueUpdated, new Dictionary<string, string?>
+        {
+            ["identifier"] = Identifier.Value,
+            ["oldValue"] = previousTitle,
+            ["newValue"] = Title
+        });
 
         return Result.Success();
     }
@@ -161,9 +182,28 @@ public sealed class Issue
             return;
         }
 
+        var previous = Status;
+
         Status = status;
         CompletedAt = status == IssueStatus.Done ? now : null;
         UpdatedAt = now;
+
+        // Completar y cancelar son acciones propias, no "editar el estado": es acá donde se
+        // sabe la diferencia, y mirar la fila después del cambio no la recuperaría.
+        var action = status switch
+        {
+            IssueStatus.Done => ActivityAction.IssueCompleted,
+            IssueStatus.Canceled => ActivityAction.IssueCanceled,
+            _ => ActivityAction.IssueUpdated
+        };
+
+        Record(action, new Dictionary<string, string?>
+        {
+            ["identifier"] = Identifier.Value,
+            ["field"] = nameof(Status),
+            ["oldValue"] = previous.ToString(),
+            ["newValue"] = status.ToString()
+        });
     }
 
     public void ChangePriority(IssuePriority priority, DateTimeOffset now)
@@ -185,8 +225,17 @@ public sealed class Issue
             return;
         }
 
+        var previous = AssigneeId;
+
         AssigneeId = assigneeId;
         UpdatedAt = now;
+
+        Record(ActivityAction.IssueAssigned, new Dictionary<string, string?>
+        {
+            ["identifier"] = Identifier.Value,
+            ["oldValue"] = previous?.ToString(),
+            ["newValue"] = assigneeId?.ToString()
+        });
     }
 
     /// <summary>
@@ -290,6 +339,12 @@ public sealed class Issue
         _labels.Add(new IssueLabel(Id, labelId));
         UpdatedAt = now;
 
+        Record(ActivityAction.LabelAdded, new Dictionary<string, string?>
+        {
+            ["identifier"] = Identifier.Value,
+            ["labelId"] = labelId.ToString()
+        });
+
         return Result.Success();
     }
 
@@ -305,10 +360,33 @@ public sealed class Issue
         _labels.Remove(label);
         UpdatedAt = now;
 
+        Record(ActivityAction.LabelRemoved, new Dictionary<string, string?>
+        {
+            ["identifier"] = Identifier.Value,
+            ["labelId"] = labelId.ToString()
+        });
+
         return Result.Success();
     }
 
     public bool HasLabel(Guid labelId) => _labels.Any(l => l.LabelId == labelId);
+
+    /// <inheritdoc />
+    public IReadOnlyList<ActivityEvent> PendingActivity => _activity.AsReadOnly();
+
+    /// <inheritdoc />
+    public void ClearActivity() => _activity.Clear();
+
+    private void Record(ActivityAction action, IReadOnlyDictionary<string, string?> payload) =>
+        _activity.Add(new ActivityEvent
+        {
+            EntityType = ActivityEntityType.Issue,
+            EntityId = Id,
+            Action = action,
+            TeamId = TeamId,
+            IssueId = Id,
+            Payload = payload
+        });
 
     private static Result ValidateTitle(string title) => title switch
     {

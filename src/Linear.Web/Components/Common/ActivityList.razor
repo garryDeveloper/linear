@@ -1,0 +1,66 @@
+@using Linear.Web.Features.Activities.Contracts
+
+@* Lista de entradas del historial. La comparten el feed del equipo y el de un issue: la
+   diferencia entre los dos es qué se consulta, no cómo se dibuja. *@
+<div class="activity-list">
+    @foreach (var activity in Activities)
+    {
+        <article class="activity-entry" @key="activity.Id">
+            <UserAvatar Name="@activity.Actor.Name" AvatarUrl="@activity.Actor.AvatarUrl" />
+
+            <div class="activity-body">
+                <div class="activity-line">
+                    <MudIcon Icon="@ActivityLabel.IconFor(activity)"
+                             Size="Size.Small"
+                             Color="Color.Secondary" />
+
+                    <span class="activity-actor">@activity.Actor.Name</span>
+                    <span>@ActivityLabel.For(activity)</span>
+
+                    @if (ShowIssue && ActivityLabel.IssueIdentifierOf(activity) is { Length: > 0 } identifier)
+                    {
+                        <MudLink Href="@($"/teams/{TeamKey}/issues/{identifier}")"
+                                 Typo="Typo.body2"
+                                 Class="activity-issue">
+                            @identifier
+                        </MudLink>
+                    }
+                </div>
+
+                @if (ActivityLabel.DetailFor(activity) is { Length: > 0 } detail)
+                {
+                    <MudText Typo="Typo.caption" Color="Color.Secondary" Class="activity-detail">
+                        @detail
+                    </MudText>
+                }
+            </div>
+
+            <MudTooltip Text="@activity.CreatedAt.ToLocalTime().ToString("dd/MM/yyyy HH:mm")">
+                <MudText Typo="Typo.caption" Color="Color.Secondary" Class="activity-elapsed">
+                    @ActivityLabel.Elapsed(activity.CreatedAt, Now)
+                </MudText>
+            </MudTooltip>
+        </article>
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired]
+    public required IReadOnlyList<ActivityResponse> Activities { get; set; }
+
+    [Parameter, EditorRequired]
+    public required string TeamKey { get; set; }
+
+    /// <summary>
+    /// Si se enlaza al issue de cada entrada. En el feed del equipo hace falta —las entradas
+    /// vienen de issues distintos—; dentro de un issue sería un enlace a la página actual.
+    /// </summary>
+    [Parameter]
+    public bool ShowIssue { get; set; } = true;
+
+    /// <summary>
+    /// Momento contra el que se calcula "hace tanto". Se fija una vez por render y no se lee
+    /// por entrada, para que todas las líneas de una misma lista midan contra el mismo reloj.
+    /// </summary>
+    private DateTimeOffset Now { get; } = DateTimeOffset.UtcNow;
+}

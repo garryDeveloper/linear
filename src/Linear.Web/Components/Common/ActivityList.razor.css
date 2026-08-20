@@ -1,0 +1,47 @@
+.activity-list {
+    display: flex;
+    flex-direction: column;
+}
+
+.activity-entry {
+    align-items: start;
+    display: grid;
+    gap: 0.625rem;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    padding: 0.5rem 0;
+}
+
+.activity-entry:not(:first-child) {
+    border-top: 1px solid var(--mud-palette-lines-default);
+}
+
+.activity-body {
+    min-width: 0;
+}
+
+.activity-line {
+    align-items: center;
+    display: flex;
+    flex-wrap: wrap;
+    font-size: 0.8125rem;
+    gap: 0.25rem;
+    line-height: 1.4;
+}
+
+.activity-actor {
+    font-weight: 600;
+}
+
+.activity-issue {
+    font-family: ui-monospace, "Cascadia Code", "SF Mono", Consolas, monospace;
+    font-size: 0.75rem;
+}
+
+.activity-detail {
+    display: block;
+    padding-left: 1.5rem;
+}
+
+.activity-elapsed {
+    white-space: nowrap;
+}
