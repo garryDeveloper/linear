@@ -146,9 +146,8 @@ apuntando a una fila que ya no está. Un comentario eliminado se trata como inex
 no se puede editar ni volver a eliminar.
 
 El contenido se guarda como Markdown crudo, sin interpretar, con un tope de 10.000
-caracteres. Por ahora se muestra tal cual, respetando los saltos de línea; renderizarlo y
-sanitizarlo es de la [task 012](.ai/tasks/012-markdown.md), y guardar el texto sin tocar es
-justamente lo que deja implementarla después sin migrar lo ya escrito.
+caracteres, y se renderiza al mostrarlo — ver [Markdown](#markdown). Guardar el texto sin
+tocar fue justamente lo que permitió sumar el renderizado después sin migrar lo ya escrito.
 
 El listado va del comentario más viejo al más nuevo —una conversación se lee en el orden en
 que se escribió, al revés que el listado de issues— y está paginado como todos los demás.
@@ -156,6 +155,55 @@ que se escribió, al revés que el listado de issues— y está paginado como to
 A diferencia de `Issue` o `Label`, el modelo de dominio ubica `Comment` dentro del agregado
 `Issue`. Acá es raíz propia: la colección crece sin techo, y cargarla entera cada vez que se
 abre un issue chocaría con la paginación obligatoria de los listados.
+
+## Markdown
+
+Las descripciones de los issues y los comentarios se escriben en Markdown, con un editor de
+dos pestañas —Escribir y Vista previa— y los atajos `Ctrl/Cmd + B` y `Ctrl/Cmd + I`. El texto
+se guarda tal como se escribió: el renderizado ocurre al mostrarlo, nunca al guardarlo.
+
+Se soporta lo que pide la task 012: títulos, negrita, itálica, enlaces, listas con y sin
+orden, código en línea y en bloque, citas y tablas (con alineación).
+
+### Seguridad: el HTML peligroso nunca llega a existir
+
+El proyecto no incorpora dependencias nuevas (CLAUDE.md), así que no hay ni librería de
+Markdown ni sanitizador. La restricción termina empujando a un diseño **más** seguro que el
+habitual.
+
+Lo normal es armar el HTML y después pasarle un sanitizador que le quite lo peligroso. Ese
+enfoque recibe el daño ya hecho y trata de deshacerlo, y ahí es donde históricamente se
+escapan cosas. Acá el renderizador **codifica todo el texto al salir y solo emite las
+etiquetas que él mismo decide**: lo que alguien escriba como `<script>` se convierte en
+texto visible, no en una etiqueta. No hay nada que sanear porque no se produce HTML del
+usuario en ningún momento.
+
+El único dato que termina dentro de un atributo es la dirección de un enlace, y ahí codificar
+no alcanza —el navegador ejecuta `javascript:` aunque el texto esté bien escapado—. Por eso
+el esquema se valida contra una **lista blanca** (`http`, `https`, `mailto`, y direcciones
+relativas), después de quitar espacios y caracteres de control de toda la cadena: el
+navegador ignora un tabulador metido en el medio, así que `java&#9;script:` se ejecutaría
+igual si se comparara sin normalizar. Lo que no pasa la validación queda apuntando a `#`.
+
+Los enlaces externos salen con `rel="noopener noreferrer"`: sin `noopener`, la página que se
+abre puede redirigir a la que la abrió usando `window.opener`.
+
+Hay 50 tests de seguridad. No buscan subcadenas en la salida sino que **inspeccionan las
+etiquetas realmente emitidas**, porque `&lt;img onerror=x&gt;` contiene la palabra "onerror"
+y es texto inerte, mientras que `<img onerror=x>` es un ataque: buscar la palabra confunde
+las dos cosas.
+
+### Qué no cubre
+
+No pretende ser CommonMark completo. Lo que no reconoce queda como texto, que es la forma
+segura de fallar. La limitación visible: tres delimitadores pegados —`**negrita *itálica***`—
+no se desenredan, porque el cierre de la itálica y el de la negrita comparten caracteres y
+resolverlo pide el algoritmo de carreras de delimitadores de CommonMark, más grande que todo
+este renderizador. El anidado normal (`**fuerte con *suave* adentro**`) sí funciona.
+
+A diferencia de CommonMark, un salto de línea simple se conserva como salto: en un gestor de
+issues la gente escribe renglones cortos esperando que se respeten, no que se unan en un
+párrafo.
 
 ## Actividad
 
@@ -473,6 +521,76 @@ el izquierdo de la siguiente y las columnas embaldosan sin huecos.
 Al elegir una iniciativa, la línea de tiempo lista sus issues usando el **filtro del listado
 de issues** (`roadmapItem`), el mismo mecanismo de la task 008 — no hay un camino aparte
 para la misma pregunta. Ese filtro acepta identificadores y `none`, igual que `sprint`.
+
+## Atajos de teclado
+
+| Atajo | Qué hace |
+| --- | --- |
+| `C` | Crear issue |
+| `/` | Buscar |
+| `Ctrl/⌘ K` | Búsqueda global |
+| `G` `I` | Ir a Issues |
+| `G` `S` | Ir a Sprints |
+| `G` `R` | Ir a Roadmap |
+| `?` | Ver la ayuda de atajos |
+| `Esc` | Cerrar el diálogo abierto |
+| `Enter` | Confirmar el diálogo, o abrir el resultado marcado en la búsqueda |
+| `Ctrl/⌘ Enter` | Enviar el comentario que se está escribiendo |
+| `Ctrl/⌘ B` · `Ctrl/⌘ I` | Negrita e itálica, dentro del editor |
+
+`?` abre esa misma lista dentro de la aplicación.
+
+### Un solo listener
+
+Hay **un único** `keydown` en toda la aplicación, en `KeyboardShortcuts.razor.js`, montado
+desde el layout. Ningún componente escucha el teclado por su cuenta: cuando un atajo coincide,
+JavaScript avisa a .NET con el identificador y el componente decide qué hacer.
+
+Esto obligó a rehacer el `Ctrl+K` de la búsqueda, que hasta la task 009 se registraba en su
+propio componente. Ahora el botón de la cabecera y el atajo terminan los dos en
+`SearchDialogLauncher`, un servicio con ámbito de circuito que además evita que se apilen dos
+diálogos si el atajo se repite con uno ya abierto.
+
+### El filtrado ocurre en JavaScript
+
+En Blazor Server, mandar cada tecla al servidor para que decida si le interesa sería **una ida
+y vuelta por pulsación**. El motor recibe la tabla al registrarse y solo cruza el circuito
+cuando un atajo realmente coincidió.
+
+### La tabla vive en C#
+
+`AppShortcuts.All` es la única fuente: de ahí salen tanto lo que responde el teclado como la
+pantalla de ayuda, así que **no pueden divergir**. Agregar un atajo es agregar una fila.
+
+Al navegador viaja `AppShortcuts.Bindings`, una proyección con lo justo para comparar la
+pulsación; los textos de la ayuda se quedan del lado del servidor.
+
+Las filas marcadas `Global = false` —`Esc`, `Enter`, `Ctrl+B`— se listan en la ayuda pero no
+las toma el motor: las resuelve el control que tiene el foco, que es el único que sabe qué se
+está escribiendo. Un manejador global de `Enter` rompería cualquier formulario.
+
+### No interferir con la escritura
+
+Con el foco en un `input`, `textarea`, `select` o algo `contenteditable`, los atajos **no se
+disparan**: una `c` es una `c`. La única excepción es `Ctrl/⌘ K`, marcada `AllowInEditor`,
+porque buscar desde adentro de un editor es razonable y es el atajo que ya está incorporado de
+otras herramientas.
+
+Tampoco se toma nada con `Alt`, ni combinaciones con `Ctrl` que no estén en la tabla: `Ctrl+C`
+sigue copiando.
+
+### Windows, Linux y Mac
+
+El motor acepta `ctrlKey` **o** `metaKey`, así que el mismo atajo funciona con Ctrl y con Cmd
+sin detectar el sistema operativo —detectar el navegador es frágil, y quien usa un teclado
+externo puede tener cualquiera de las dos—. Por eso la ayuda dice `Ctrl/⌘`.
+
+### Las secuencias
+
+`G` `I` es una secuencia, no una combinación. La primera tecla queda armada **1,5 segundos**:
+suficiente para escribir la segunda sin apuro, y corto para que una `g` suelta no quede
+esperando indefinidamente. Si la segunda tecla no completa ninguna secuencia, se evalúa como
+atajo simple —`G` y después `C` crea un issue—.
 
 ## Datos de ejemplo
 

@@ -9,6 +9,9 @@
 <MudDialogProvider />
 <MudSnackbarProvider />
 
+@* Único componente que escucha el teclado en toda la aplicación (task 013). *@
+<KeyboardShortcuts />
+
 <MudLayout>
     <AppHeader OnToggleSidebar="ToggleSidebar" />
     <AppSidebar @bind-Open="_sidebarOpen" />

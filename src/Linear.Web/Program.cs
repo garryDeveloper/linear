@@ -3,6 +3,7 @@ using System.Text.Json.Serialization;
 using FastEndpoints;
 
 using Linear.Web.Components;
+using Linear.Web.Components.Common;
 using Linear.Web.Components.Theming;
 using Linear.Web.Features;
 using Linear.Web.Infrastructure.Authentication;
@@ -18,6 +19,7 @@ builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();
 builder.Services.AddMudServices();
 builder.Services.AddScoped<ThemeState>();
+builder.Services.AddScoped<SearchDialogLauncher>();
 
 // API interna.
 // El assembly se declara explícitamente porque bajo WebApplicationFactory el entry

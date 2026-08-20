@@ -1,0 +1,206 @@
+@implements IAsyncDisposable
+
+@using Linear.Web.Shared.Markdown
+
+@inject IJSRuntime JS
+
+@* Editor de Markdown con dos pestañas, como pide la task 012. Se usa en la descripción del
+   issue y en los comentarios: la misma sintaxis en los dos lugares. *@
+<div class="markdown-editor">
+    <div class="markdown-toolbar">
+        <MudButtonGroup Size="Size.Small" Variant="Variant.Text">
+            <MudButton Class="@TabClass(false)" OnClick="() => ShowPreview(false)">Escribir</MudButton>
+            <MudButton Class="@TabClass(true)" OnClick="() => ShowPreview(true)">Vista previa</MudButton>
+        </MudButtonGroup>
+
+        @if (!_preview)
+        {
+            <div class="markdown-actions">
+                <MudTooltip Text="Negrita (Ctrl+B)">
+                    <MudIconButton Icon="@Icons.Material.Rounded.FormatBold"
+                                   Size="Size.Small"
+                                   aria-label="Negrita"
+                                   OnClick="@(() => WrapAsync(BoldDelimiter))" />
+                </MudTooltip>
+                <MudTooltip Text="Itálica (Ctrl+I)">
+                    <MudIconButton Icon="@Icons.Material.Rounded.FormatItalic"
+                                   Size="Size.Small"
+                                   aria-label="Itálica"
+                                   OnClick="@(() => WrapAsync(ItalicDelimiter))" />
+                </MudTooltip>
+            </div>
+        }
+    </div>
+
+    @if (_preview)
+    {
+        <div class="markdown-preview">
+            @if (string.IsNullOrWhiteSpace(Value))
+            {
+                <MudText Typo="Typo.body2" Color="Color.Secondary">Nada que previsualizar.</MudText>
+            }
+            else
+            {
+                <MarkdownView Markdown="@Value" />
+            }
+        </div>
+    }
+    else
+    {
+        @* El textarea es propio y no un MudTextField porque hace falta la referencia al
+           elemento para manejar la selección desde JavaScript. *@
+        <textarea @ref="_textarea"
+                  class="markdown-input"
+                  rows="@Rows"
+                  placeholder="@Placeholder"
+                  maxlength="@MaxLength"
+                  disabled="@Disabled"
+                  value="@Value"
+                  @oninput="OnInputAsync"
+                  @onkeydown="OnKeyDownAsync"></textarea>
+    }
+</div>
+
+@code {
+    private const string BoldDelimiter = "**";
+    private const string ItalicDelimiter = "*";
+
+    private ElementReference _textarea;
+    private IJSObjectReference? _module;
+    private bool _preview;
+    private WrapResult? _pendingSelection;
+
+    [Parameter]
+    public string? Value { get; set; }
+
+    [Parameter]
+    public EventCallback<string?> ValueChanged { get; set; }
+
+    [Parameter]
+    public string? Placeholder { get; set; }
+
+    [Parameter]
+    public int Rows { get; set; } = 6;
+
+    [Parameter]
+    public int MaxLength { get; set; } = 10_000;
+
+    [Parameter]
+    public bool Disabled { get; set; }
+
+    /// <summary>
+    /// Qué hacer con <c>Ctrl/Cmd + Enter</c>. Si no se define, el atajo no hace nada.
+    /// </summary>
+    /// <remarks>
+    /// Es uno de los atajos que la task 013 permite dentro del editor, y por eso se maneja
+    /// acá y no en el motor central: solo tiene sentido con el foco puesto en este textarea,
+    /// que es el que sabe qué se está escribiendo.
+    /// </remarks>
+    [Parameter]
+    public EventCallback OnSubmit { get; set; }
+
+    private string TabClass(bool preview) =>
+        _preview == preview ? "markdown-tab markdown-tab-active" : "markdown-tab";
+
+    private void ShowPreview(bool preview) => _preview = preview;
+
+    private Task OnInputAsync(ChangeEventArgs args) =>
+        ValueChanged.InvokeAsync(args.Value?.ToString());
+
+    /// <summary>
+    /// Atajos de formato dentro del editor.
+    /// </summary>
+    /// <remarks>
+    /// Solo Ctrl/Cmd+B y Ctrl/Cmd+I, que son los que pide la task 012 y los únicos que tiene
+    /// sentido atender mientras se escribe. Los atajos globales de navegación son de la task
+    /// 013 y no se manejan acá: justamente no deben dispararse dentro de un editor.
+    /// </remarks>
+    private async Task OnKeyDownAsync(KeyboardEventArgs args)
+    {
+        if (!args.CtrlKey && !args.MetaKey)
+        {
+            return;
+        }
+
+        if (args.Key == "Enter")
+        {
+            if (OnSubmit.HasDelegate && !Disabled)
+            {
+                await OnSubmit.InvokeAsync();
+            }
+
+            return;
+        }
+
+        var delimiter = args.Key.ToLowerInvariant() switch
+        {
+            "b" => BoldDelimiter,
+            "i" => ItalicDelimiter,
+            _ => null
+        };
+
+        if (delimiter is not null)
+        {
+            await WrapAsync(delimiter);
+        }
+    }
+
+    private async Task WrapAsync(string delimiter)
+    {
+        if (Disabled)
+        {
+            return;
+        }
+
+        var module = await LoadModuleAsync();
+        var wrapped = await module.InvokeAsync<WrapResult?>("wrapSelection", _textarea, delimiter);
+
+        if (wrapped is null)
+        {
+            return;
+        }
+
+        // La selección se repone recién en OnAfterRenderAsync: acá el valor todavía tiene que
+        // dar la vuelta por Blazor, y el re-render dejaría el cursor al final del texto —muy
+        // molesto, porque lo que se escriba después aterrizaría en otro lado.
+        _pendingSelection = wrapped;
+
+        await ValueChanged.InvokeAsync(wrapped.Value);
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_pendingSelection is not { } selection)
+        {
+            return;
+        }
+
+        _pendingSelection = null;
+
+        var module = await LoadModuleAsync();
+
+        await module.InvokeVoidAsync("setSelection", _textarea, selection.Start, selection.End);
+    }
+
+    /// <summary>Lo que devuelve <c>wrapSelection</c>: el texto nuevo y dónde dejar el cursor.</summary>
+    private sealed record WrapResult(string Value, int Start, int End);
+
+    private async Task<IJSObjectReference> LoadModuleAsync() =>
+        _module ??= await JS.InvokeAsync<IJSObjectReference>(
+            "import", "./Components/Common/MarkdownEditor.razor.js");
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_module is not null)
+        {
+            try
+            {
+                await _module.DisposeAsync();
+            }
+            catch (JSDisconnectedException)
+            {
+                // El circuito ya se cerró: no queda navegador al que pedirle nada.
+            }
+        }
+    }
+}

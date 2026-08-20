@@ -97,12 +97,15 @@ else if (_issue is not null)
                           Class="issue-title-field"
                           MaxLength="@Issue.MaxTitleLength" />
 
-            <MudTextField T="string" Value="_description"
-                          ValueChanged="OnDescriptionChanged"
-                          Immediate="false"
-                          Variant="Variant.Text"
-                          Placeholder="Agregar una descripción…"
-                          Lines="8" />
+            @* La descripción es Markdown, con vista previa. Guarda al salir del editor y no
+               en cada tecla: el resto del panel también guarda solo, pero acá escribir es
+               una tarea larga y no tiene sentido mandar una petición por palabra. *@
+            <div @onfocusout="SaveContentAsync">
+                <MarkdownEditor Value="_description"
+                                ValueChanged="OnDescriptionChanged"
+                                Rows="8"
+                                Placeholder="Agregar una descripción…" />
+            </div>
 
             @* La conversación se carga sola, aparte del issue: es un listado paginado con
                su propio ciclo de vida, y no tiene por qué demorar el detalle. *@
@@ -487,11 +490,12 @@ else if (_issue is not null)
         return SaveContentAsync();
     }
 
-    private Task OnDescriptionChanged(string? value)
-    {
-        _description = value;
-        return SaveContentAsync();
-    }
+    /// <summary>
+    /// Solo actualiza el estado local: el editor avisa en cada tecla —lo necesita para que la
+    /// vista previa muestre lo último—, y guardar ahí mandaría una petición por letra. El
+    /// guardado lo dispara el <c>focusout</c> del editor.
+    /// </summary>
+    private void OnDescriptionChanged(string? value) => _description = value;
 
     private async Task SaveContentAsync()
     {

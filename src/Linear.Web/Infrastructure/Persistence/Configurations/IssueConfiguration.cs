@@ -48,7 +48,7 @@ public sealed class IssueConfiguration : IEntityTypeConfiguration<Issue>
             .HasMaxLength(Issue.MaxTitleLength)
             .IsRequired();
 
-        // Sin límite de longitud: es contenido Markdown de formato libre (Task 012).
+        // Sin límite de longitud: es contenido Markdown de formato libre.
         builder.Property(issue => issue.Description);
 
         builder.Property(issue => issue.Status)

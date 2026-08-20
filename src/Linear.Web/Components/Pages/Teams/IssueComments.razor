@@ -83,17 +83,10 @@
 
                     @if (_editingId == comment.Id)
                     {
-                        @* Immediate: sin esto el binding recién se actualiza al perder el
-                           foco, así que "Guardar" seguiría deshabilitado mientras se escribe
-                           y el primer clic no haría nada. *@
-                        <MudTextField T="string"
-                                      @bind-Value="_editContent"
-                                      Immediate="true"
-                                      Variant="Variant.Outlined"
-                                      Margin="Margin.Dense"
-                                      Lines="4"
-                                      AutoFocus="true"
-                                      MaxLength="Comment.MaxContentLength" />
+                        <MarkdownEditor @bind-Value="_editContent"
+                                        Rows="4"
+                                        MaxLength="Comment.MaxContentLength"
+                                        OnSubmit="SaveEditAsync" />
                         <MudStack Row="true" Spacing="1" Class="mt-1">
                             <MudButton Variant="Variant.Filled"
                                        Color="Color.Primary"
@@ -112,9 +105,9 @@
                     }
                     else
                     {
-                        @* El contenido es Markdown sin interpretar: se muestra tal cual, con
-                           los saltos de línea respetados. Renderizarlo es de la task 012. *@
-                        <div class="comment-content">@comment.Content</div>
+                        <div class="comment-content">
+                            <MarkdownView Markdown="@comment.Content" />
+                        </div>
                     }
                 </div>
             </article>
@@ -132,14 +125,11 @@
         }
 
         <div class="comment-composer">
-            <MudTextField T="string"
-                          @bind-Value="_newComment"
-                          Immediate="true"
-                          Variant="Variant.Outlined"
-                          Margin="Margin.Dense"
-                          Lines="3"
-                          Placeholder="Escribí un comentario…"
-                          MaxLength="Comment.MaxContentLength" />
+            <MarkdownEditor @bind-Value="_newComment"
+                            Rows="3"
+                            Placeholder="Escribí un comentario…"
+                            MaxLength="Comment.MaxContentLength"
+                            OnSubmit="AddAsync" />
             <MudButton Variant="Variant.Filled"
                        Color="Color.Primary"
                        Size="Size.Small"
@@ -171,9 +161,9 @@
     private int _totalCount;
     private bool _hasMore;
 
-    private string _newComment = string.Empty;
+    private string? _newComment = string.Empty;
     private Guid? _editingId;
-    private string _editContent = string.Empty;
+    private string? _editContent = string.Empty;
 
     private string? _loadedFor;
 
@@ -241,7 +231,7 @@
         StateHasChanged();
 
         var result = await CreateComment.HandleAsync(
-            new CreateCommentRequest { Key = Key, Identifier = Identifier, Content = _newComment },
+            new CreateCommentRequest { Key = Key, Identifier = Identifier, Content = _newComment ?? string.Empty },
             _cancellation.Token);
 
         _busy = false;
@@ -291,7 +281,7 @@
                 Key = Key,
                 Identifier = Identifier,
                 CommentId = commentId,
-                Content = _editContent
+                Content = _editContent ?? string.Empty
             },
             _cancellation.Token);
 

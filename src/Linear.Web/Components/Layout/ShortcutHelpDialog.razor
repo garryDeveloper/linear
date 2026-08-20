@@ -1,0 +1,30 @@
+@* Ayuda de atajos. La tabla es la misma que alimenta el motor, así que lo que se lee acá es
+   literalmente lo que responde el teclado. *@
+<MudDialog>
+    <DialogContent>
+        <div class="shortcut-help">
+            @foreach (var shortcut in AppShortcuts.All)
+            {
+                <div class="shortcut-row" @key="@($"{shortcut.Id}-{shortcut.Display}")">
+                    <span class="shortcut-description">@shortcut.Description</span>
+                    <kbd class="shortcut-keys">@shortcut.Display</kbd>
+                </div>
+            }
+        </div>
+
+        <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mt-3">
+            Los atajos no se disparan mientras escribís en un campo de texto, salvo los que
+            están pensados para el editor.
+        </MudText>
+    </DialogContent>
+    <DialogActions>
+        <MudButton Size="Size.Small" OnClick="Close">Cerrar</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter]
+    private IMudDialogInstance Dialog { get; set; } = default!;
+
+    private void Close() => Dialog.Close();
+}

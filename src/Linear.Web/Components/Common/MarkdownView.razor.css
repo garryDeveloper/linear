@@ -1,0 +1,105 @@
+/* Los elementos de adentro los produce MarkupString, así que no llevan el atributo de scope
+   de Blazor: una regla común como ".markdown-body h1" se compilaría a "h1[b-xxxxx]" y no
+   alcanzaría a ninguno. Por eso van con ::deep, que apoya el scope en el contenedor —que sí
+   está escrito en el .razor— y deja libre al descendiente. */
+.markdown-body {
+    font-size: 0.8125rem;
+    line-height: 1.55;
+    overflow-wrap: anywhere;
+}
+
+/* Sin margen arriba en el primer bloque ni abajo en el último: el contenedor ya pone el aire,
+   y si no, cada bloque de Markdown se separaría del borde de forma despareja. */
+.markdown-body ::deep > *:first-child {
+    margin-top: 0;
+}
+
+.markdown-body ::deep > *:last-child {
+    margin-bottom: 0;
+}
+
+.markdown-body ::deep p {
+    margin: 0 0 0.5rem;
+}
+
+.markdown-body ::deep h1,
+.markdown-body ::deep h2,
+.markdown-body ::deep h3,
+.markdown-body ::deep h4,
+.markdown-body ::deep h5,
+.markdown-body ::deep h6 {
+    font-weight: 600;
+    line-height: 1.3;
+    margin: 0.75rem 0 0.375rem;
+}
+
+.markdown-body ::deep h1 { font-size: 1.125rem; }
+.markdown-body ::deep h2 { font-size: 1rem; }
+.markdown-body ::deep h3 { font-size: 0.9375rem; }
+.markdown-body ::deep h4,
+.markdown-body ::deep h5,
+.markdown-body ::deep h6 { font-size: 0.875rem; }
+
+.markdown-body ::deep ul,
+.markdown-body ::deep ol {
+    margin: 0 0 0.5rem;
+    padding-left: 1.25rem;
+}
+
+.markdown-body ::deep li {
+    margin-bottom: 0.125rem;
+}
+
+.markdown-body ::deep a {
+    color: var(--mud-palette-primary);
+}
+
+.markdown-body ::deep code {
+    background-color: var(--mud-palette-background-gray);
+    border-radius: 3px;
+    font-family: ui-monospace, "Cascadia Code", "SF Mono", Consolas, monospace;
+    font-size: 0.75rem;
+    padding: 0.1rem 0.25rem;
+}
+
+.markdown-body ::deep pre {
+    background-color: var(--mud-palette-background-gray);
+    border-radius: var(--mud-default-borderradius);
+    margin: 0 0 0.5rem;
+    overflow-x: auto;
+    padding: 0.625rem;
+}
+
+/* Dentro de un bloque, el código no lleva su propio fondo ni relleno: ya los pone el pre. */
+.markdown-body ::deep pre code {
+    background: none;
+    padding: 0;
+}
+
+.markdown-body ::deep blockquote {
+    border-left: 3px solid var(--mud-palette-lines-default);
+    color: var(--mud-palette-text-secondary);
+    margin: 0 0 0.5rem;
+    padding: 0.125rem 0 0.125rem 0.75rem;
+}
+
+.markdown-body ::deep table {
+    border-collapse: collapse;
+    display: block;
+    margin: 0 0 0.5rem;
+    overflow-x: auto;
+    width: max-content;
+    max-width: 100%;
+}
+
+.markdown-body ::deep th,
+.markdown-body ::deep td {
+    border: 1px solid var(--mud-palette-lines-default);
+    padding: 0.25rem 0.5rem;
+    text-align: left;
+}
+
+.markdown-body ::deep th {
+    background-color: var(--mud-palette-background-gray);
+    font-weight: 600;
+}

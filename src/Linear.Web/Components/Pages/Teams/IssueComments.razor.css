@@ -41,14 +41,9 @@
     margin-left: auto;
 }
 
-/* El contenido es Markdown sin interpretar (task 012): se muestra tal cual, respetando
-   saltos de línea y espacios, y cortando las palabras largas para que un enlace pegado
-   no desborde la columna. */
+/* El contenido ya viene renderizado por MarkdownView, que trae su propia tipografía. */
 .comment-content {
-    font-size: 0.8125rem;
-    line-height: 1.5;
-    overflow-wrap: anywhere;
-    white-space: pre-wrap;
+    min-width: 0;
 }
 
 .comment-composer {

@@ -1,0 +1,13 @@
+@using Linear.Web.Shared.Markdown
+
+@* Muestra Markdown ya renderizado.
+   El HTML se emite con MarkupString, que en Blazor no escapa: es seguro porque lo produjo
+   MarkdownRenderer, que codifica todo el texto del usuario y solo emite etiquetas propias.
+   Este es el único lugar de la aplicación donde se hace, y por eso pasa siempre por el
+   renderizador y nunca por una cadena cualquiera. *@
+<div class="markdown-body">@(new MarkupString(MarkdownRenderer.Render(Markdown)))</div>
+
+@code {
+    [Parameter]
+    public string? Markdown { get; set; }
+}
