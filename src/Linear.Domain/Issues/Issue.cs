@@ -78,6 +78,16 @@ public sealed class Issue
     /// </remarks>
     public Guid? SprintId { get; private set; }
 
+    /// <summary>
+    /// Iniciativa del roadmap a la que contribuye el issue, si contribuye a alguna.
+    /// </summary>
+    /// <remarks>
+    /// Referencia por identificador, igual que el sprint. Sprint y roadmap son dos ejes
+    /// distintos y compatibles: el sprint dice en qué quincena se trabaja el issue, la
+    /// iniciativa dice a qué objetivo de mediano plazo aporta.
+    /// </remarks>
+    public Guid? RoadmapItemId { get; private set; }
+
     public Guid CreatedById { get; private set; }
 
     public DateTimeOffset CreatedAt { get; private set; }
@@ -204,6 +214,36 @@ public sealed class Issue
         }
 
         SprintId = null;
+        UpdatedAt = now;
+
+        return Result.Success();
+    }
+
+    /// <summary>
+    /// Asocia el issue a una iniciativa del roadmap. Si ya estaba en otra, lo mueve: un issue
+    /// aporta a una única iniciativa.
+    /// </summary>
+    public Result AssignToRoadmapItem(Guid roadmapItemId, DateTimeOffset now)
+    {
+        if (RoadmapItemId == roadmapItemId)
+        {
+            return Result.Failure(IssueErrors.AlreadyInRoadmapItem);
+        }
+
+        RoadmapItemId = roadmapItemId;
+        UpdatedAt = now;
+
+        return Result.Success();
+    }
+
+    public Result RemoveFromRoadmapItem(DateTimeOffset now)
+    {
+        if (RoadmapItemId is null)
+        {
+            return Result.Failure(IssueErrors.NotInARoadmapItem);
+        }
+
+        RoadmapItemId = null;
         UpdatedAt = now;
 
         return Result.Success();

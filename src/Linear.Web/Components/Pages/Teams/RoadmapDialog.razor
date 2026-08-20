@@ -1,0 +1,109 @@
+@using Linear.Domain.Roadmaps
+@using Linear.Web.Features.Roadmaps.Contracts
+@using Linear.Web.Features.Roadmaps.Create
+@using Linear.Web.Features.Roadmaps.Update
+
+@inject CreateRoadmapHandler CreateRoadmap
+@inject UpdateRoadmapHandler UpdateRoadmap
+
+<MudDialog>
+    <DialogContent>
+        <MudStack Spacing="3" Style="min-width: 420px;">
+            @if (_error is not null)
+            {
+                <MudAlert Severity="Severity.Error" Dense="true" Variant="Variant.Outlined">
+                    @_error.Description
+                </MudAlert>
+            }
+
+            <MudTextField @bind-Value="_name"
+                          Label="Nombre"
+                          Variant="Variant.Outlined"
+                          Margin="Margin.Dense"
+                          Immediate="true"
+                          MaxLength="@Roadmap.MaxNameLength"
+                          Required="true"
+                          AutoFocus="true" />
+
+            <MudTextField @bind-Value="_description"
+                          Label="Descripción"
+                          Variant="Variant.Outlined"
+                          Margin="Margin.Dense"
+                          MaxLength="@Roadmap.MaxDescriptionLength"
+                          Lines="3" />
+        </MudStack>
+    </DialogContent>
+    <DialogActions>
+        <MudButton Size="Size.Small" OnClick="Cancel">Cancelar</MudButton>
+        <MudButton Size="Size.Small"
+                   Variant="Variant.Filled"
+                   Color="Color.Primary"
+                   Disabled="_saving"
+                   OnClick="SubmitAsync">
+            @(Existing is null ? "Crear roadmap" : "Guardar")
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter]
+    private IMudDialogInstance Dialog { get; set; } = default!;
+
+    [Parameter, EditorRequired]
+    public required string TeamKey { get; set; }
+
+    /// <summary>Roadmap a editar, o <c>null</c> para crear uno nuevo.</summary>
+    [Parameter]
+    public RoadmapSummaryResponse? Existing { get; set; }
+
+    private string _name = string.Empty;
+    private string? _description;
+    private Error? _error;
+    private bool _saving;
+
+    protected override void OnInitialized()
+    {
+        if (Existing is { } roadmap)
+        {
+            _name = roadmap.Name;
+            _description = roadmap.Description;
+        }
+    }
+
+    private async Task SubmitAsync()
+    {
+        _saving = true;
+        _error = null;
+
+        var result = Existing is { } existing
+            ? await UpdateRoadmap.HandleAsync(
+                new UpdateRoadmapRequest
+                {
+                    Key = TeamKey,
+                    RoadmapId = existing.Id,
+                    Name = _name,
+                    Description = _description
+                },
+                CancellationToken.None)
+            : await CreateRoadmap.HandleAsync(
+                new CreateRoadmapRequest
+                {
+                    Key = TeamKey,
+                    Name = _name,
+                    Description = _description
+                },
+                CancellationToken.None);
+
+        _saving = false;
+
+        if (result.IsFailure)
+        {
+            _error = result.Error;
+            return;
+        }
+
+        Dialog.Close(DialogResult.Ok(result.Value));
+    }
+
+    private void Cancel() => Dialog.Cancel();
+}

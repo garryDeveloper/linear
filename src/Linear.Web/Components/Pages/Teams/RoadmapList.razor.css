@@ -1,0 +1,31 @@
+.roadmap-row {
+    align-items: center;
+    cursor: pointer;
+    display: grid;
+    gap: 1rem;
+    grid-template-columns: minmax(0, 1fr) auto auto;
+    padding: 0.625rem 0.875rem;
+}
+
+.roadmap-row:not(:first-child) {
+    border-top: 1px solid var(--mud-palette-lines-default);
+}
+
+.roadmap-row:hover {
+    background-color: var(--mud-palette-action-default-hover);
+}
+
+.roadmap-row-main {
+    min-width: 0;
+}
+
+.roadmap-row-name {
+    font-weight: 600;
+}
+
+.roadmap-row-description {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}

@@ -1,0 +1,196 @@
+@implements IDisposable
+
+@using Linear.Web.Features.Search.Contracts
+@using Linear.Web.Features.Search.SearchIssues
+@using Linear.Web.Infrastructure.Search
+
+@inject SearchIssuesHandler SearchIssues
+@inject NavigationManager Navigation
+
+@* Paleta de búsqueda: se abre con Ctrl/Cmd+K, busca mientras se escribe y se recorre con
+   las flechas. El diálogo no tiene botones —Enter abre el resultado marcado, Escape cierra—
+   porque es una herramienta de teclado. *@
+<MudDialog Class="search-dialog">
+    <TitleContent>
+        <MudTextField T="string"
+                      Value="_query"
+                      ValueChanged="OnQueryChangedAsync"
+                      Immediate="true"
+                      DebounceInterval="250"
+                      Placeholder="Buscar issues…"
+                      Variant="Variant.Text"
+                      Margin="Margin.Dense"
+                      AutoFocus="true"
+                      Adornment="Adornment.Start"
+                      AdornmentIcon="@Icons.Material.Rounded.Search"
+                      Class="search-input"
+                      OnKeyDown="OnKeyDown" />
+    </TitleContent>
+
+    <DialogContent>
+        <div class="search-results">
+            @if (_searching)
+            {
+                <MudProgressLinear Indeterminate="true" Size="Size.Small" />
+            }
+
+            @if (_error is not null)
+            {
+                <MudAlert Severity="Severity.Error" Dense="true" Variant="Variant.Outlined">
+                    @_error.Description
+                </MudAlert>
+            }
+            else if (IsTooShort)
+            {
+                <MudText Typo="Typo.body2" Color="Color.Secondary" Class="search-hint">
+                    Escribí al menos @SearchTerm.MinimumLength caracteres.
+                </MudText>
+            }
+            else if (_results.Count == 0 && _searched)
+            {
+                <MudText Typo="Typo.body2" Color="Color.Secondary" Class="search-hint">
+                    No hay issues que coincidan con «@_query».
+                </MudText>
+            }
+            else
+            {
+                @foreach (var (result, index) in _results.Select((result, index) => (result, index)))
+                {
+                    <div class="@ResultClass(index)"
+                         @key="result.Id"
+                         @onclick="() => Open(result)"
+                         @onmouseenter="() => _selected = index">
+                        <div class="search-result-head">
+                            <span class="search-result-identifier">@result.Identifier</span>
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">@result.TeamName</MudText>
+                            <IssueStatusMark Status="ParseStatus(result.Status)" ShowLabel="false" />
+                        </div>
+
+                        <div class="search-result-title">@result.Title</div>
+
+                        @* Un resultado que apareció por un comentario no se explica solo:
+                           su título puede no tener nada que ver con lo que se buscó. *@
+                        @if (result.MatchedInComment)
+                        {
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                Coincide en un comentario
+                            </MudText>
+                        }
+                    </div>
+                }
+            }
+        </div>
+    </DialogContent>
+</MudDialog>
+
+@code {
+    private readonly CancellationTokenSource _cancellation = new();
+
+    [CascadingParameter]
+    private IMudDialogInstance Dialog { get; set; } = default!;
+
+    private string _query = string.Empty;
+    private IReadOnlyList<SearchResultResponse> _results = [];
+    private Error? _error;
+    private bool _searching;
+    private bool _searched;
+    private int _selected;
+
+    /// <summary>
+    /// Hay algo escrito, pero todavía no alcanza para buscar. Distinto de estar vacío: ahí
+    /// no se dice nada.
+    /// </summary>
+    private bool IsTooShort =>
+        _query.Trim().Length is > 0 and < SearchTerm.MinimumLength;
+
+    private string ResultClass(int index) =>
+        index == _selected ? "search-result search-result-selected" : "search-result";
+
+    private async Task OnQueryChangedAsync(string? value)
+    {
+        _query = value ?? string.Empty;
+        _selected = 0;
+
+        var term = SearchTerm.Create(_query);
+
+        // No se consulta con un término inservible: es la misma regla que aplica el handler,
+        // pero acá además evita el viaje de ida y vuelta.
+        if (term is null)
+        {
+            _results = [];
+            _searched = false;
+            _error = null;
+            StateHasChanged();
+            return;
+        }
+
+        _searching = true;
+        StateHasChanged();
+
+        var result = await SearchIssues.HandleAsync(
+            new SearchIssuesRequest { Query = _query },
+            _cancellation.Token);
+
+        _searching = false;
+        _searched = true;
+
+        if (result.IsFailure)
+        {
+            _error = result.Error;
+            _results = [];
+        }
+        else
+        {
+            _error = null;
+            _results = result.Value;
+        }
+
+        StateHasChanged();
+    }
+
+    /// <summary>
+    /// Navegación con el teclado sobre la lista de resultados.
+    /// </summary>
+    /// <remarks>
+    /// No se cancela el evento: hacerlo en un <c>MudTextField</c> exige fijar
+    /// <c>KeyDownPreventDefault</c> al renderizar, es decir antes de saber qué tecla vino, y
+    /// cancelar todas rompería la escritura. Sin cancelar, lo único que pasa de más es que
+    /// las flechas mueven el cursor dentro del campo, que en una sola línea no molesta.
+    /// </remarks>
+    private void OnKeyDown(KeyboardEventArgs args)
+    {
+        switch (args.Key)
+        {
+            case "ArrowDown" when _results.Count > 0:
+                _selected = (_selected + 1) % _results.Count;
+                break;
+
+            case "ArrowUp" when _results.Count > 0:
+                _selected = (_selected - 1 + _results.Count) % _results.Count;
+                break;
+
+            case "Enter" when _selected < _results.Count && _results.Count > 0:
+                Open(_results[_selected]);
+                break;
+
+            case "Escape":
+                Dialog.Cancel();
+                break;
+        }
+    }
+
+    private void Open(SearchResultResponse result)
+    {
+        Dialog.Close();
+        Navigation.NavigateTo($"/teams/{result.TeamKey}/issues/{result.Identifier}");
+    }
+
+    private static IssueStatus ParseStatus(string status) =>
+        Enum.TryParse<IssueStatus>(status, out var parsed) ? parsed : IssueStatus.Backlog;
+
+    public void Dispose()
+    {
+        _cancellation.Cancel();
+        _cancellation.Dispose();
+    }
+}

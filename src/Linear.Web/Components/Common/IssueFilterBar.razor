@@ -6,11 +6,15 @@
 @using Linear.Web.Features.Labels.List
 @using Linear.Web.Features.Sprints.Contracts
 @using Linear.Web.Features.Sprints.List
+@using Linear.Web.Features.Roadmaps.GetById
+@using Linear.Web.Features.Roadmaps.List
 @using Linear.Web.Features.Teams.Contracts
 @using Linear.Web.Shared.Pagination
 
 @inject ListLabelsHandler ListLabels
 @inject ListSprintsHandler ListSprints
+@inject ListRoadmapsHandler ListRoadmaps
+@inject GetRoadmapByIdHandler GetRoadmap
 
 @* Constructor de filtros: una fila por campo —campo, operador, valores—, tal como lo
    plantea la task 008. Las filas se combinan con Y, y como cada campo es un parámetro de
@@ -132,6 +136,7 @@
     private readonly List<FilterRow> _rows = [];
     private IReadOnlyList<LabelResponse> _labels = [];
     private IReadOnlyList<SprintSummaryResponse> _sprints = [];
+    private IReadOnlyList<IssueFilterOption> _roadmapItems = [];
 
     [Parameter, EditorRequired]
     public required string TeamKey { get; set; }
@@ -217,7 +222,44 @@
             _sprints = sprints.Value.Items;
         }
 
+        await LoadRoadmapItemsAsync();
+
         StateHasChanged();
+    }
+
+    /// <summary>
+    /// Trae las iniciativas de todos los roadmaps del equipo, con el nombre del roadmap
+    /// adelante para poder distinguir dos que se llamen parecido en roadmaps distintos.
+    /// </summary>
+    private async Task LoadRoadmapItemsAsync()
+    {
+        var roadmaps = await ListRoadmaps.HandleAsync(
+            new ListRoadmapsRequest { Key = TeamKey, PageSize = PageRequest.MaxPageSize },
+            _cancellation.Token);
+
+        if (roadmaps.IsFailure)
+        {
+            return;
+        }
+
+        var options = new List<IssueFilterOption>();
+
+        foreach (var summary in roadmaps.Value.Items.Where(roadmap => roadmap.ItemCount > 0))
+        {
+            var roadmap = await GetRoadmap.HandleAsync(
+                new GetRoadmapByIdRequest { Key = TeamKey, RoadmapId = summary.Id },
+                _cancellation.Token);
+
+            if (roadmap.IsFailure)
+            {
+                continue;
+            }
+
+            options.AddRange(roadmap.Value.Items.Select(item =>
+                new IssueFilterOption(item.Id.ToString(), $"{roadmap.Value.Name} / {item.Name}")));
+        }
+
+        _roadmapItems = options;
     }
 
     private IReadOnlyList<IssueFilterOption> OptionsFor(IssueFilterField field) => field switch
@@ -241,6 +283,11 @@
         [
             new(IssueFilterOptions.None, "Sin sprint"),
             .. _sprints.Select(sprint => new IssueFilterOption(sprint.Id.ToString(), sprint.Name))
+        ],
+        IssueFilterField.RoadmapItem =>
+        [
+            new(IssueFilterOptions.None, "Sin iniciativa"),
+            .. _roadmapItems
         ],
         _ => IssueFilterOptions.FixedOptionsFor(field)
     };

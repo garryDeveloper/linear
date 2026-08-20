@@ -1,0 +1,244 @@
+@page "/teams/{Key}/roadmaps"
+@implements IDisposable
+
+@using Linear.Domain.Teams
+@using Linear.Web.Features.Roadmaps.Contracts
+@using Linear.Web.Features.Roadmaps.Delete
+@using Linear.Web.Features.Roadmaps.List
+@using Linear.Web.Features.Teams.Contracts
+@using Linear.Web.Features.Teams.GetByKey
+@using Linear.Web.Shared.Pagination
+
+@inject GetTeamByKeyHandler GetTeam
+@inject ListRoadmapsHandler ListRoadmaps
+@inject DeleteRoadmapHandler DeleteRoadmap
+@inject IDialogService DialogService
+@inject ISnackbar Snackbar
+@inject NavigationManager Navigation
+
+<PageTitle>Roadmap · Linear</PageTitle>
+
+<TeamPageHeader Team="_team" TeamKey="@Key" />
+
+@if (_loading)
+{
+    <MudSkeleton Height="220px" />
+}
+else if (_error is not null)
+{
+    <MudAlert Severity="Severity.Error" Dense="true" Variant="Variant.Outlined">
+        @_error.Description
+    </MudAlert>
+}
+else if (_page is not null)
+{
+    <MudStack Spacing="4">
+        <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+            <MudText Typo="Typo.body2" Color="Color.Secondary">
+                @_page.TotalCount @(_page.TotalCount == 1 ? "roadmap" : "roadmaps")
+            </MudText>
+            <MudButton Variant="Variant.Filled"
+                       Color="Color.Primary"
+                       Size="Size.Small"
+                       StartIcon="@Icons.Material.Rounded.Add"
+                       OnClick="() => OpenDialogAsync(null)">
+                Nuevo roadmap
+            </MudButton>
+        </MudStack>
+
+        @if (_page.Items.Count == 0)
+        {
+            <MudPaper Outlined="true" Class="pa-8">
+                <MudStack AlignItems="AlignItems.Center" Spacing="2">
+                    <MudIcon Icon="@Icons.Material.Rounded.Timeline" Size="Size.Large" Color="Color.Secondary" />
+                    <MudText Typo="Typo.h4">Sin roadmaps todavía</MudText>
+                    <MudText Typo="Typo.body2" Color="Color.Secondary" Align="Align.Center">
+                        Un roadmap agrupa las iniciativas del equipo a mediano y largo plazo.
+                    </MudText>
+                    <MudButton Variant="Variant.Filled"
+                               Color="Color.Primary"
+                               Size="Size.Small"
+                               StartIcon="@Icons.Material.Rounded.Add"
+                               OnClick="() => OpenDialogAsync(null)">
+                        Crear roadmap
+                    </MudButton>
+                </MudStack>
+            </MudPaper>
+        }
+        else
+        {
+            <MudPaper Outlined="true">
+                @foreach (var roadmap in _page.Items)
+                {
+                    <div class="roadmap-row" @key="roadmap.Id" @onclick="() => Open(roadmap.Id)">
+                        <div class="roadmap-row-main">
+                            <MudText Typo="Typo.body2" Class="roadmap-row-name">@roadmap.Name</MudText>
+                            @if (roadmap.Description is { Length: > 0 } description)
+                            {
+                                <MudText Typo="Typo.caption" Color="Color.Secondary" Class="roadmap-row-description">
+                                    @description
+                                </MudText>
+                            }
+                        </div>
+
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">
+                            @roadmap.ItemCount @(roadmap.ItemCount == 1 ? "iniciativa" : "iniciativas")
+                        </MudText>
+
+                        <MudMenu Icon="@Icons.Material.Rounded.MoreHoriz"
+                                 Size="Size.Small"
+                                 Dense="true"
+                                 AriaLabel="Acciones del roadmap"
+                                 @onclick:stopPropagation="true">
+                            <MudMenuItem Icon="@Icons.Material.Rounded.Edit"
+                                         OnClick="@(() => OpenDialogAsync(roadmap))">
+                                Editar
+                            </MudMenuItem>
+                            @if (CanDelete)
+                            {
+                                <MudMenuItem Icon="@Icons.Material.Rounded.DeleteOutline"
+                                             OnClick="@(() => DeleteAsync(roadmap))">
+                                    Eliminar
+                                </MudMenuItem>
+                            }
+                        </MudMenu>
+                    </div>
+                }
+            </MudPaper>
+        }
+
+        @if (_page.TotalPages > 1)
+        {
+            <MudPagination Count="_page.TotalPages"
+                           Selected="_currentPage"
+                           SelectedChanged="GoToPageAsync"
+                           Size="Size.Small" />
+        }
+    </MudStack>
+}
+
+@code {
+    private readonly CancellationTokenSource _cancellation = new();
+
+    [Parameter]
+    public string Key { get; set; } = string.Empty;
+
+    private TeamResponse? _team;
+    private PagedResult<RoadmapSummaryResponse>? _page;
+    private Error? _error;
+    private bool _loading = true;
+    private int _currentPage = 1;
+
+    private bool CanDelete =>
+        Enum.TryParse<TeamRole>(_team?.Role, out var role) && role >= TeamRole.Admin;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (_team?.Key != Key)
+        {
+            await LoadAsync();
+        }
+    }
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        _error = null;
+        StateHasChanged();
+
+        var team = await GetTeam.HandleAsync(Key, _cancellation.Token);
+
+        if (team.IsFailure)
+        {
+            _error = team.Error;
+            _loading = false;
+            StateHasChanged();
+            return;
+        }
+
+        _team = team.Value;
+
+        await ReloadAsync();
+
+        _loading = false;
+        StateHasChanged();
+    }
+
+    private async Task ReloadAsync()
+    {
+        var result = await ListRoadmaps.HandleAsync(
+            new ListRoadmapsRequest { Key = Key, Page = _currentPage },
+            _cancellation.Token);
+
+        if (result.IsSuccess)
+        {
+            _page = result.Value;
+        }
+        else
+        {
+            _error = result.Error;
+        }
+    }
+
+    private async Task GoToPageAsync(int page)
+    {
+        _currentPage = page;
+        await ReloadAsync();
+        StateHasChanged();
+    }
+
+    private void Open(Guid roadmapId) => Navigation.NavigateTo($"/teams/{Key}/roadmaps/{roadmapId}");
+
+    private async Task OpenDialogAsync(RoadmapSummaryResponse? roadmap)
+    {
+        var parameters = new DialogParameters<RoadmapDialog>
+        {
+            { dialog => dialog.TeamKey, Key },
+            { dialog => dialog.Existing, roadmap }
+        };
+
+        var title = roadmap is null ? "Nuevo roadmap" : "Editar roadmap";
+        var dialog = await DialogService.ShowAsync<RoadmapDialog>(title, parameters);
+
+        if (await dialog.Result is { Canceled: false })
+        {
+            await ReloadAsync();
+            StateHasChanged();
+        }
+    }
+
+    private async Task DeleteAsync(RoadmapSummaryResponse roadmap)
+    {
+        var confirmed = await DialogService.ShowMessageBoxAsync(
+            "Eliminar roadmap",
+            $"Se va a eliminar «{roadmap.Name}» y sus {roadmap.ItemCount} iniciativas. Los issues asociados no se borran, quedan sin iniciativa. Esta acción no se puede deshacer.",
+            yesText: "Eliminar",
+            cancelText: "Cancelar");
+
+        if (confirmed != true)
+        {
+            return;
+        }
+
+        var result = await DeleteRoadmap.HandleAsync(
+            new DeleteRoadmapRequest { Key = Key, RoadmapId = roadmap.Id },
+            _cancellation.Token);
+
+        if (result.IsFailure)
+        {
+            Snackbar.Add(result.Error.Description, Severity.Error);
+            return;
+        }
+
+        Snackbar.Add("Roadmap eliminado.", Severity.Success);
+
+        await ReloadAsync();
+        StateHasChanged();
+    }
+
+    public void Dispose()
+    {
+        _cancellation.Cancel();
+        _cancellation.Dispose();
+    }
+}

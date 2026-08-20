@@ -5,6 +5,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
+using NpgsqlTypes;
 
 #nullable disable
 
@@ -44,12 +45,21 @@ namespace Linear.Web.Infrastructure.Persistence.Migrations
                     b.Property<Guid>("IssueId")
                         .HasColumnType("uuid");
 
+                    b.Property<NpgsqlTsVector>("SearchVector")
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("tsvector")
+                        .HasComputedColumnSql("to_tsvector('spanish_unaccent', coalesce(\"Content\", ''))", true);
+
                     b.Property<DateTimeOffset>("UpdatedAt")
                         .HasColumnType("timestamp with time zone");
 
                     b.HasKey("Id");
 
                     b.HasIndex("AuthorId");
+
+                    b.HasIndex("SearchVector");
+
+                    NpgsqlIndexBuilderExtensions.HasMethod(b.HasIndex("SearchVector"), "GIN");
 
                     b.HasIndex("IssueId", "CreatedAt");
 
@@ -92,6 +102,14 @@ namespace Linear.Web.Infrastructure.Persistence.Migrations
                         .HasMaxLength(32)
                         .HasColumnType("character varying(32)");
 
+                    b.Property<Guid?>("RoadmapItemId")
+                        .HasColumnType("uuid");
+
+                    b.Property<NpgsqlTsVector>("SearchVector")
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("tsvector")
+                        .HasComputedColumnSql("setweight(to_tsvector('spanish_unaccent', coalesce(\"Title\", '')), 'A') ||\nsetweight(to_tsvector('spanish_unaccent', coalesce(\"Description\", '')), 'B')", true);
+
                     b.Property<Guid?>("SprintId")
                         .HasColumnType("uuid");
 
@@ -119,6 +137,12 @@ namespace Linear.Web.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("Identifier")
                         .IsUnique();
+
+                    b.HasIndex("SearchVector");
+
+                    NpgsqlIndexBuilderExtensions.HasMethod(b.HasIndex("SearchVector"), "GIN");
+
+                    b.HasIndex("RoadmapItemId", "Status");
 
                     b.HasIndex("SprintId", "Status");
 
@@ -181,6 +205,77 @@ namespace Linear.Web.Infrastructure.Persistence.Migrations
                         .IsUnique();
 
                     b.ToTable("Labels", (string)null);
+                });
+
+            modelBuilder.Entity("Linear.Domain.Roadmaps.Roadmap", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Description")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<Guid>("TeamId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TeamId");
+
+                    b.ToTable("Roadmaps", (string)null);
+                });
+
+            modelBuilder.Entity("Linear.Domain.Roadmaps.RoadmapItem", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Description")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<Guid>("RoadmapId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateOnly>("StartDate")
+                        .HasColumnType("date");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<DateOnly>("TargetDate")
+                        .HasColumnType("date");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("RoadmapId", "StartDate");
+
+                    b.ToTable("RoadmapItems", (string)null);
                 });
 
             modelBuilder.Entity("Linear.Domain.Sprints.Sprint", b =>
@@ -345,6 +440,39 @@ namespace Linear.Web.Infrastructure.Persistence.Migrations
                     b.ToTable("Users", (string)null);
                 });
 
+            modelBuilder.Entity("Linear.Web.Infrastructure.Search.SearchResultRow", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Identifier")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<bool>("MatchedInComment")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("TeamKey")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("TeamName")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.ToTable((string)null);
+
+                    b.ToView(null, (string)null);
+                });
+
             modelBuilder.Entity("Linear.Domain.Comments.Comment", b =>
                 {
                     b.HasOne("Linear.Domain.Users.User", null)
@@ -372,6 +500,11 @@ namespace Linear.Web.Infrastructure.Persistence.Migrations
                         .HasForeignKey("CreatedById")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
+
+                    b.HasOne("Linear.Domain.Roadmaps.RoadmapItem", null)
+                        .WithMany()
+                        .HasForeignKey("RoadmapItemId")
+                        .OnDelete(DeleteBehavior.SetNull);
 
                     b.HasOne("Linear.Domain.Sprints.Sprint", null)
                         .WithMany()
@@ -409,6 +542,24 @@ namespace Linear.Web.Infrastructure.Persistence.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("Linear.Domain.Roadmaps.Roadmap", b =>
+                {
+                    b.HasOne("Linear.Domain.Teams.Team", null)
+                        .WithMany()
+                        .HasForeignKey("TeamId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Linear.Domain.Roadmaps.RoadmapItem", b =>
+                {
+                    b.HasOne("Linear.Domain.Roadmaps.Roadmap", null)
+                        .WithMany("Items")
+                        .HasForeignKey("RoadmapId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("Linear.Domain.Sprints.Sprint", b =>
                 {
                     b.HasOne("Linear.Domain.Teams.Team", null)
@@ -436,6 +587,11 @@ namespace Linear.Web.Infrastructure.Persistence.Migrations
             modelBuilder.Entity("Linear.Domain.Issues.Issue", b =>
                 {
                     b.Navigation("Labels");
+                });
+
+            modelBuilder.Entity("Linear.Domain.Roadmaps.Roadmap", b =>
+                {
+                    b.Navigation("Items");
                 });
 
             modelBuilder.Entity("Linear.Domain.Teams.Team", b =>

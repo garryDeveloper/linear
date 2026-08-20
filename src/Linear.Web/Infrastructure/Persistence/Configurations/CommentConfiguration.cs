@@ -2,8 +2,12 @@ using Linear.Domain.Comments;
 using Linear.Domain.Issues;
 using Linear.Domain.Users;
 
+using Linear.Web.Infrastructure.Search;
+
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
+
+using NpgsqlTypes;
 
 namespace Linear.Web.Infrastructure.Persistence.Configurations;
 
@@ -48,5 +52,30 @@ public sealed class CommentConfiguration : IEntityTypeConfiguration<Comment>
             .WithMany()
             .HasForeignKey(comment => comment.AuthorId)
             .OnDelete(DeleteBehavior.Restrict);
+
+        ConfigureSearch(builder);
+    }
+
+    /// <summary>
+    /// Columna de búsqueda de texto completo sobre el contenido del comentario.
+    /// </summary>
+    /// <remarks>
+    /// Misma mecánica que en <see cref="IssueConfiguration"/>: propiedad sombra, columna
+    /// generada y guardada, e índice GIN. Acá no hay pesos porque el comentario tiene un
+    /// único campo de texto.
+    ///
+    /// Los comentarios eliminados conservan su vector —la columna se genera igual—, pero la
+    /// búsqueda los descarta filtrando por <c>DeletedAt</c>: borrar un comentario tiene que
+    /// sacarlo también de los resultados.
+    /// </remarks>
+    private static void ConfigureSearch(EntityTypeBuilder<Comment> builder)
+    {
+        builder.Property<NpgsqlTsVector>(SearchSchema.SearchVectorColumn)
+            .HasComputedColumnSql(
+                $"""to_tsvector('{SearchSchema.Configuration}', coalesce("Content", ''))""",
+                stored: true);
+
+        builder.HasIndex(SearchSchema.SearchVectorColumn)
+            .HasMethod("GIN");
     }
 }

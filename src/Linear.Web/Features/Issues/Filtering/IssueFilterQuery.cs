@@ -74,6 +74,8 @@ public static class IssueFilterQuery
             IssueFilterField.CreatedBy => await MatchCreatedByAsync(filter, currentUser, cancellationToken),
             IssueFilterField.Label => await MatchLabelAsync(filter, teamId, dbContext, cancellationToken),
             IssueFilterField.Sprint => await MatchSprintAsync(filter, teamId, dbContext, cancellationToken),
+            IssueFilterField.RoadmapItem =>
+                await MatchRoadmapItemAsync(filter, teamId, dbContext, cancellationToken),
             _ => Result.Failure<Expression<Func<Issue, bool>>>(
                 IssueFilterErrors.OperatorNotSupported(filter.Field, filter.Operator))
         };
@@ -228,6 +230,59 @@ public static class IssueFilterQuery
             (_, false) => issue => issue.SprintId != null && ids.Contains(issue.SprintId.Value),
             (_, true) => issue =>
                 issue.SprintId == null || (issue.SprintId != null && ids.Contains(issue.SprintId.Value))
+        });
+    }
+
+    private static async Task<Result<Expression<Func<Issue, bool>>>> MatchRoadmapItemAsync(
+        IssueFilter filter,
+        Guid teamId,
+        AppDbContext dbContext,
+        CancellationToken cancellationToken)
+    {
+        var ids = new List<Guid>();
+        var includesNone = false;
+
+        foreach (var value in filter.Values)
+        {
+            if (value.Equals(None, StringComparison.OrdinalIgnoreCase))
+            {
+                includesNone = true;
+            }
+            else if (Guid.TryParse(value, out var itemId))
+            {
+                ids.Add(itemId);
+            }
+            else
+            {
+                return Result.Failure<Expression<Func<Issue, bool>>>(
+                    IssueFilterErrors.UnknownValue(filter.Field, value));
+            }
+        }
+
+        // Mismo criterio que con los sprints: la iniciativa tiene que pertenecer a un roadmap
+        // de este equipo. Filtrar por una ajena no devuelve nada ni confirma que exista.
+        if (ids.Count > 0)
+        {
+            var known = await dbContext.Roadmaps
+                .AsNoTracking()
+                .Where(roadmap => roadmap.TeamId == teamId)
+                .SelectMany(roadmap => roadmap.Items)
+                .Where(item => ids.Contains(item.Id))
+                .Select(item => item.Id)
+                .ToListAsync(cancellationToken);
+
+            ids = known;
+        }
+
+        return Result.Success<Expression<Func<Issue, bool>>>((ids.Count, includesNone) switch
+        {
+            (0, true) => issue => issue.RoadmapItemId == null,
+            (0, false) => _ => false,
+            (_, false) => issue =>
+                issue.RoadmapItemId != null && ids.Contains(issue.RoadmapItemId.Value),
+            (_, true) => issue =>
+                issue.RoadmapItemId == null ||
+                (issue.RoadmapItemId != null && ids.Contains(issue.RoadmapItemId.Value))
         });
     }
 

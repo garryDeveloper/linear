@@ -119,9 +119,8 @@ tener varias labels, siempre y cuando pertenezcan al mismo equipo que el issue. 
 saca al issue del listado por omisión sin eliminarlo; sigue siendo alcanzable por su
 identificador.
 
-`RoadmapItemId` —del modelo de dominio— todavía no existe como columna: RoadmapItem es de
-la task 010. Se suma cuando esa entidad exista, en vez de guardar una referencia a una
-tabla que no está. `SprintId` ya existe, desde la task 007.
+`SprintId` existe desde la task 007 y `RoadmapItemId` desde la task 010: el modelo de
+dominio ya está completo, sin campos pendientes.
 
 ## Comentarios
 
@@ -158,12 +157,73 @@ A diferencia de `Issue` o `Label`, el modelo de dominio ubica `Comment` dentro d
 `Issue`. Acá es raíz propia: la colección crece sin techo, y cargarla entera cada vez que se
 abre un issue chocaría con la paginación obligatoria de los listados.
 
+## Búsqueda
+
+Buscador global de issues, con `Ctrl+K` (o `Cmd+K`) desde cualquier pantalla. Busca en el
+identificador, el título, la descripción y los comentarios, y cruza **todos los equipos a
+los que pertenece el usuario** — no solo el que está abierto.
+
+Se recorre con el teclado: las flechas mueven la selección, Enter abre el issue y Escape
+cierra. Los resultados muestran el equipo, porque al ser global pueden venir de varios.
+
+### Cómo está armada
+
+PostgreSQL Full Text Search, sin motores externos. `Issues` y `Comments` tienen cada uno una
+columna `tsvector` **generada y guardada** (`STORED`) con un índice GIN encima. Guardarla
+—en vez de calcularla en cada consulta— es lo que permite que el índice sirva, y exige que
+la expresión sea IMMUTABLE: por eso la configuración de idioma va escrita como literal.
+
+En los issues el título pesa más que la descripción (`A` contra `B`), así que un issue que
+menciona el término en el título queda por encima de otro que solo lo nombra de pasada.
+
+### Acentos
+
+El diccionario es `spanish_unaccent`: el castellano de PostgreSQL con un paso previo de
+`unaccent`. El diccionario de fábrica reduce las palabras a su raíz pero no toca los
+acentos, y en castellano se escribe sin ellos todo el tiempo — sin este agregado, buscar
+`autenticacion` no encontraría «autenticación». Encadenar `unaccent` normaliza las dos
+puntas: da lo mismo cómo se escriba lo buscado y cómo se haya escrito lo guardado.
+`unaccent` es una extensión que viene con PostgreSQL, no un motor aparte.
+
+### Coincidencia por prefijo
+
+El buscador responde mientras se escribe, así que cada palabra se busca como prefijo
+(`auten:*` encuentra «autenticación»). Todas las palabras tienen que aparecer: al escribir
+se va acotando el resultado.
+
+El texto se reduce a letras y dígitos antes de armar la consulta, así que ningún carácter
+con significado en `tsquery` —`&`, `|`, `!`, paréntesis, comillas— sobrevive; sin esa
+limpieza, escribir un paréntesis suelto haría fallar la consulta con un error de sintaxis.
+
+### Por qué son tres consultas y no una con OR
+
+Un issue puede aparecer por su identificador, por su texto o por un comentario. Las tres
+condiciones se resuelven como ramas separadas de un `UNION ALL` y recién después se juntan
+y se ordenan.
+
+Unirlas con `OR` en una sola consulta parece más simple, pero obliga a recorrer todos los
+issues del usuario: con un `OR` de por medio el planificador no puede entrar por ningún
+índice, y la búsqueda del comentario —que va correlacionada— termina ejecutándose una vez
+por issue. Medido con 50.000 issues, esa versión recorría los 10.000 del usuario y evaluaba
+10.000 veces la subconsulta de comentarios; con las ramas separadas cada una entra por su
+índice y devuelve un puñado de candidatos.
+
+Por el mismo motivo los parámetros se repiten en cada rama en lugar de calcularse una vez en
+un CTE: con el CTE de por medio el planificador pierde de vista los valores y vuelve a los
+recorridos secuenciales.
+
+### Qué queda afuera
+
+Los issues archivados, igual que en el listado. Los comentarios eliminados tampoco
+coinciden. Debajo de dos caracteres no se consulta la base, y los resultados están acotados
+a 20.
+
 ## Filtros
 
-El listado de issues se filtra por estado, prioridad, responsable, label, sprint, autor y
-título. Las condiciones se combinan con Y, y hay como máximo una por campo: cada campo es un
-parámetro de la query string, que es exactamente lo que muestra el constructor de filtros
-—una fila por campo—.
+El listado de issues se filtra por estado, prioridad, responsable, label, sprint, iniciativa
+del roadmap, autor y título. Las condiciones se combinan con Y, y hay como máximo una por
+campo: cada campo es un parámetro de la query string, que es exactamente lo que muestra el
+constructor de filtros —una fila por campo—.
 
 ### En la URL
 
@@ -186,6 +246,9 @@ falta escribirlo:
 | `status=not:Done,Canceled` | `notIn` | no está en |
 | `title=login` | `contains` | contiene |
 
+Los campos filtrables son estado, prioridad, responsable, label, sprint, iniciativa del
+roadmap (`roadmapItem`), autor y título.
+
 `is`/`in` y `isNot`/`notIn` son en el fondo el mismo par —incluir y excluir— y solo se
 distinguen por la cantidad de valores: "is X" es "in [X]". Por eso alcanza con el prefijo
 `not:`, y la cantidad de valores decide el resto. Las formas largas (`is:`, `isNot:`, `in:`,
@@ -201,7 +264,7 @@ parcial sin distinguir mayúsculas, no la búsqueda de la [task 009](.ai/tasks/0
 | Valor | Campos | Significa |
 | --- | --- | --- |
 | `me` | responsable, autor | El usuario de la sesión. |
-| `none` | responsable, sprint | Sin responsable / sin sprint. |
+| `none` | responsable, sprint, iniciativa | Sin responsable / sin sprint / sin iniciativa. |
 
 Las labels se pueden nombrar por identificador o por nombre (`label=bug`), porque el nombre
 es único dentro del equipo. Un nombre que no existe devuelve un error en lugar de una lista
@@ -280,6 +343,72 @@ El listado calcula las métricas de todos los sprints de la página con una úni
 agrupada. El detalle sí trae los issues completos: el tablero los necesita a todos para ser
 un tablero, y un sprint es por definición un lote acotado de trabajo —no el listado abierto
 del equipo, que sigue paginado—.
+
+## Roadmap
+
+Mientras el sprint dice en qué quincena se trabaja un issue, el roadmap dice a qué objetivo
+de mediano plazo aporta. Son dos ejes distintos y compatibles: un issue puede estar en un
+sprint, en una iniciativa, en ambos o en ninguno.
+
+Un equipo puede tener varios roadmaps, y cada uno agrupa **iniciativas**: tramos de trabajo
+con nombre, fechas y estado.
+
+| Estado | Significa |
+| --- | --- |
+| Planificada | Todavía no arrancó. |
+| En curso | Se está trabajando. |
+| Completada | Terminada. |
+| Cancelada | Se descartó. |
+
+A diferencia del sprint, **no hay un recorrido obligatorio de estados**: una iniciativa puede
+volver de "en curso" a "planificada" si se despriorizó, o reabrirse después de darse por
+terminada. El roadmap es una intención revisable, no un proceso con pasos, y la task 010 no
+define transiciones.
+
+Las fechas son `DateOnly` y la fecha objetivo tiene que ser posterior a la de inicio, igual
+que en los sprints: una iniciativa dura semanas o meses, y guardarla como `DateTimeOffset`
+obligaría a inventar una hora.
+
+### Las iniciativas viven dentro del roadmap
+
+`Roadmap` es la raíz de su agregado y sus iniciativas viven adentro, tal como lo define el
+modelo de dominio. Acá sí corresponde —y en `Comment` no correspondió— porque la cantidad
+está acotada por naturaleza: un roadmap junta unas decenas de iniciativas, no una
+conversación que crece sin techo. Y sobre todo porque la línea de tiempo las necesita todas
+a la vez para poder dibujarse; paginarlas sería dibujar media línea de tiempo.
+
+Los issues asociados, en cambio, **no** están en el agregado: es el issue el que guarda su
+`RoadmapItemId`, porque `Issue` es raíz de su propio agregado y su cantidad no tiene techo.
+
+### Permisos
+
+Planificar es trabajo del día a día: crear y editar roadmaps e iniciativas, y asociar
+issues, alcanza con pertenecer al equipo. **Eliminar** un roadmap o una iniciativa es
+definitivo y pide rol Admin u Owner, el mismo criterio que rige para eliminar un issue, una
+label o el equipo mismo.
+
+Eliminar no arrastra los issues: la clave foránea los desasocia (`SetNull`). El trabajo
+sobrevive al plan que lo agrupaba.
+
+### Línea de tiempo
+
+El detalle del roadmap es una línea de tiempo: una fila por iniciativa, con la barra ubicada
+según sus fechas y rellena según su avance (los issues asociados que ya están en `Done`).
+
+La escala se calcula en porcentajes, no en píxeles: el ancho real lo pone el CSS, así que se
+adapta sola a la pantalla. El rango arranca el primer día del mes de la iniciativa más
+temprana y termina el último del mes de la más tardía — redondear a meses completos es lo
+que permite dibujar la cabecera con columnas parejas.
+
+El ancho de cada columna y de cada barra sale de **restar dos bordes ya redondeados**, no de
+redondear el ancho por separado: así el borde derecho de una columna cae exactamente sobre
+el izquierdo de la siguiente y las columnas embaldosan sin huecos.
+
+### Ver los issues de una iniciativa
+
+Al elegir una iniciativa, la línea de tiempo lista sus issues usando el **filtro del listado
+de issues** (`roadmapItem`), el mismo mecanismo de la task 008 — no hay un camino aparte
+para la misma pregunta. Ese filtro acepta identificadores y `none`, igual que `sprint`.
 
 ## Datos de ejemplo
 

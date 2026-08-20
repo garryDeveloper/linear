@@ -18,6 +18,12 @@ public enum IssueFilterField
     CreatedBy = 5,
 
     /// <summary>
+    /// Iniciativa del roadmap. Es el mismo tipo de filtro que <see cref="Sprint"/> —otro eje
+    /// de planificación— y por eso acepta los mismos valores: identificadores y <c>none</c>.
+    /// </summary>
+    RoadmapItem = 7,
+
+    /// <summary>
     /// Título del issue. Es el único campo de texto, y por eso el único que acepta
     /// <see cref="FilterOperator.Contains"/>.
     /// </summary>

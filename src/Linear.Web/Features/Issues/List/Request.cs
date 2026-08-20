@@ -43,6 +43,9 @@ public sealed class ListIssuesRequest
     /// <summary>Acepta identificadores de usuario y <c>me</c>.</summary>
     public string? CreatedBy { get; set; }
 
+    /// <summary>Acepta identificadores de iniciativa y <c>none</c> (sin iniciativa).</summary>
+    public string? RoadmapItem { get; set; }
+
     /// <summary>Coincidencia parcial en el título, sin distinguir mayúsculas.</summary>
     public string? Title { get; set; }
 
@@ -57,6 +60,7 @@ public sealed class ListIssuesRequest
         (IssueFilterField.Label, Label),
         (IssueFilterField.Sprint, Sprint),
         (IssueFilterField.CreatedBy, CreatedBy),
+        (IssueFilterField.RoadmapItem, RoadmapItem),
         (IssueFilterField.Title, Title)
     ];
 }

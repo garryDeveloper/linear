@@ -17,6 +17,7 @@ public sealed record IssueResponse(
     IssueUserResponse CreatedBy,
     IReadOnlyList<LabelResponse> Labels,
     IssueSprintResponse? Sprint,
+    IssueRoadmapItemResponse? RoadmapItem,
     DateTimeOffset CreatedAt,
     DateTimeOffset UpdatedAt,
     DateTimeOffset? CompletedAt,
@@ -27,6 +28,12 @@ public sealed record IssueResponse(
 /// arrastrar sus fechas, su estado ni sus métricas.
 /// </summary>
 public sealed record IssueSprintResponse(Guid Id, string Name);
+
+/// <summary>
+/// Referencia liviana a la iniciativa del roadmap a la que aporta el issue. Lleva también el
+/// roadmap que la contiene, porque sin él no se puede armar el enlace a la línea de tiempo.
+/// </summary>
+public sealed record IssueRoadmapItemResponse(Guid Id, string Name, Guid RoadmapId, string RoadmapName);
 
 /// <summary>
 /// Un issue en un listado: liviano a propósito, sin descripción — la lista se lee de un

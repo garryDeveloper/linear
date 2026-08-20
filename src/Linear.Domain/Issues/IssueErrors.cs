@@ -42,6 +42,14 @@ public static class IssueErrors
     public static readonly Error NotInASprint =
         Error.NotFound("Issues.NotInASprint", "El issue no está en ese sprint.");
 
+    public static readonly Error AlreadyInRoadmapItem = Error.Conflict(
+        "Issues.AlreadyInRoadmapItem",
+        "El issue ya está asociado a esa iniciativa.");
+
+    public static readonly Error NotInARoadmapItem = Error.NotFound(
+        "Issues.NotInARoadmapItem",
+        "El issue no está asociado a esa iniciativa.");
+
     public static Error NotFound(string identifier) =>
         Error.NotFound("Issues.NotFound", $"No existe el issue '{identifier}'.");
 }

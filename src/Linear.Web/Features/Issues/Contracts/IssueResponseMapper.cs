@@ -34,9 +34,30 @@ public static class IssueResponseMapper
         var users = await LoadUsersAsync(dbContext, CollectUserIds([issue]), cancellationToken);
         var labels = await LoadLabelsAsync(dbContext, [issue], cancellationToken);
         var sprint = await LoadSprintAsync(dbContext, issue.SprintId, cancellationToken);
+        var roadmapItem = await LoadRoadmapItemAsync(dbContext, issue.RoadmapItemId, cancellationToken);
 
-        return ToResponse(issue, users, labels[issue.Id], sprint);
+        return ToResponse(issue, users, labels[issue.Id], sprint, roadmapItem);
     }
+
+    /// <summary>
+    /// Trae la iniciativa del roadmap a la que aporta el issue, si aporta a alguna, junto con
+    /// el roadmap que la contiene.
+    /// </summary>
+    private static async Task<IssueRoadmapItemResponse?> LoadRoadmapItemAsync(
+        AppDbContext dbContext,
+        Guid? roadmapItemId,
+        CancellationToken cancellationToken) =>
+        // El filtro va antes de proyectar: filtrar sobre el record ya construido no se puede
+        // traducir a SQL, porque EF no sabe volver de sus propiedades a las columnas.
+        roadmapItemId is not { } id
+            ? null
+            : await dbContext.Roadmaps
+                .AsNoTracking()
+                .SelectMany(roadmap => roadmap.Items, (roadmap, item) => new { roadmap, item })
+                .Where(row => row.item.Id == id)
+                .Select(row => new IssueRoadmapItemResponse(
+                    row.item.Id, row.item.Name, row.roadmap.Id, row.roadmap.Name))
+                .FirstOrDefaultAsync(cancellationToken);
 
     /// <summary>
     /// Trae el sprint del issue, si tiene. Solo el nombre: el detalle del issue lo muestra
@@ -92,7 +113,8 @@ public static class IssueResponseMapper
         Issue issue,
         IReadOnlyDictionary<Guid, User> users,
         IReadOnlyList<LabelResponse> labels,
-        IssueSprintResponse? sprint) =>
+        IssueSprintResponse? sprint,
+        IssueRoadmapItemResponse? roadmapItem) =>
         new(
             issue.Id,
             issue.Identifier.Value,
@@ -107,6 +129,7 @@ public static class IssueResponseMapper
             ToUserResponse(issue.CreatedById, users)!,
             labels,
             sprint,
+            roadmapItem,
             issue.CreatedAt,
             issue.UpdatedAt,
             issue.CompletedAt,

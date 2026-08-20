@@ -1,0 +1,433 @@
+@page "/teams/{Key}/roadmaps/{RoadmapId:guid}"
+@implements IDisposable
+
+@using System.Globalization
+@using Linear.Domain.Roadmaps
+@using Linear.Domain.Teams
+@using Linear.Web.Features.Issues.Contracts
+@using Linear.Web.Features.Issues.List
+@using Linear.Web.Features.Roadmaps.Contracts
+@using Linear.Web.Features.Roadmaps.DeleteItem
+@using Linear.Web.Features.Roadmaps.GetById
+@using Linear.Web.Features.Roadmaps.RemoveIssue
+@using Linear.Web.Features.Teams.Contracts
+@using Linear.Web.Features.Teams.GetByKey
+@using Linear.Web.Shared.Pagination
+
+@inject GetTeamByKeyHandler GetTeam
+@inject GetRoadmapByIdHandler GetRoadmap
+@inject DeleteRoadmapItemHandler DeleteItem
+@inject RemoveRoadmapItemIssueHandler RemoveIssue
+@inject ListIssuesHandler ListIssues
+@inject IDialogService DialogService
+@inject ISnackbar Snackbar
+@inject NavigationManager Navigation
+
+<PageTitle>@(_roadmap?.Name ?? "Roadmap") · Linear</PageTitle>
+
+@if (_loading)
+{
+    <MudSkeleton Height="320px" />
+}
+else if (_error is not null)
+{
+    <MudAlert Severity="Severity.Error" Dense="true" Variant="Variant.Outlined">
+        @_error.Description
+    </MudAlert>
+}
+else if (_roadmap is not null)
+{
+    <MudStack Spacing="3">
+        <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween">
+            <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                <MudIconButton Icon="@Icons.Material.Rounded.ArrowBack"
+                               Size="Size.Small"
+                               aria-label="Volver a roadmaps"
+                               Href="@($"/teams/{Key}/roadmaps")" />
+                <MudText Typo="Typo.h3">@_roadmap.Name</MudText>
+            </MudStack>
+
+            <MudButton Variant="Variant.Filled"
+                       Color="Color.Primary"
+                       Size="Size.Small"
+                       StartIcon="@Icons.Material.Rounded.Add"
+                       OnClick="() => OpenItemDialogAsync(null)">
+                Nueva iniciativa
+            </MudButton>
+        </MudStack>
+
+        @if (_roadmap.Description is { Length: > 0 } description)
+        {
+            <MudText Typo="Typo.body2" Color="Color.Secondary">@description</MudText>
+        }
+
+        @if (_roadmap.Items.Count == 0)
+        {
+            <MudPaper Outlined="true" Class="pa-8">
+                <MudStack AlignItems="AlignItems.Center" Spacing="2">
+                    <MudIcon Icon="@Icons.Material.Rounded.Timeline" Size="Size.Large" Color="Color.Secondary" />
+                    <MudText Typo="Typo.h4">Sin iniciativas todavía</MudText>
+                    <MudText Typo="Typo.body2" Color="Color.Secondary" Align="Align.Center">
+                        Cada iniciativa es un tramo de trabajo con fechas: es lo que dibuja la línea de tiempo.
+                    </MudText>
+                </MudStack>
+            </MudPaper>
+        }
+        else if (_timeline is not null)
+        {
+            <MudPaper Outlined="true" Class="timeline">
+                @* Cabecera de meses. Las columnas se dibujan sobre el mismo eje que las
+                   barras, así que lo que se ve alineado está realmente alineado. *@
+                <div class="timeline-row timeline-header">
+                    <div class="timeline-label"></div>
+                    <div class="timeline-track">
+                        @foreach (var month in _timeline.Months)
+                        {
+                            <div class="timeline-month"
+                                 style="@Style(month.LeftPercent, month.WidthPercent)">
+                                <span class="timeline-month-label">@month.Label</span>
+                            </div>
+                        }
+                    </div>
+                </div>
+
+                @foreach (var item in _roadmap.Items)
+                {
+                    var bar = _timeline.PositionOf(item);
+                    var status = RoadmapItemStatusLabel.Parse(item.Status);
+
+                    <div class="@RowClass(item)" @key="item.Id" @onclick="() => SelectAsync(item)">
+                        <div class="timeline-label">
+                            <MudText Typo="Typo.body2" Class="timeline-item-name">@item.Name</MudText>
+                            <MudChip T="string"
+                                     Size="Size.Small"
+                                     Variant="Variant.Text"
+                                     Color="@RoadmapItemStatusLabel.ColorFor(status)">
+                                @RoadmapItemStatusLabel.For(status)
+                            </MudChip>
+                        </div>
+
+                        <div class="timeline-track">
+                            @foreach (var month in _timeline.Months)
+                            {
+                                <div class="timeline-gridline" style="@Left(month.LeftPercent)"></div>
+                            }
+
+                            <div class="@BarClass(status)"
+                                 style="@Style(bar.LeftPercent, bar.WidthPercent)"
+                                 title="@DateRange(item)">
+                                @* El avance se pinta dentro de la propia barra: la parte
+                                   llena es lo que ya está hecho de esa iniciativa. *@
+                                <div class="timeline-bar-progress"
+                                     style="@($"width: {item.Progress.CompletionPercentage.ToString(CultureInfo.InvariantCulture)}%;")">
+                                </div>
+                                <span class="timeline-bar-text">
+                                    @item.Progress.CompletedIssues/@item.Progress.TotalIssues
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+                }
+            </MudPaper>
+
+            @if (_selected is { } selected)
+            {
+                <MudPaper Outlined="true" Class="pa-4">
+                    <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween" Class="mb-2">
+                        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                            <MudText Typo="Typo.h4">@selected.Name</MudText>
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                @DateRange(selected)
+                            </MudText>
+                        </MudStack>
+
+                        <MudMenu Icon="@Icons.Material.Rounded.MoreHoriz"
+                                 Size="Size.Small"
+                                 Dense="true"
+                                 AriaLabel="Acciones de la iniciativa">
+                            <MudMenuItem Icon="@Icons.Material.Rounded.Edit"
+                                         OnClick="@(() => OpenItemDialogAsync(selected))">
+                                Editar
+                            </MudMenuItem>
+                            @if (CanDelete)
+                            {
+                                <MudMenuItem Icon="@Icons.Material.Rounded.DeleteOutline"
+                                             OnClick="@(() => DeleteItemAsync(selected))">
+                                    Eliminar
+                                </MudMenuItem>
+                            }
+                        </MudMenu>
+                    </MudStack>
+
+                    @if (selected.Description is { Length: > 0 } itemDescription)
+                    {
+                        <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-2">
+                            @itemDescription
+                        </MudText>
+                    }
+
+                    @if (_issues.Count == 0)
+                    {
+                        <MudText Typo="Typo.body2" Color="Color.Secondary">
+                            Sin issues asociados. Se asocian desde el detalle de cada issue.
+                        </MudText>
+                    }
+                    else
+                    {
+                        @foreach (var issue in _issues)
+                        {
+                            <div class="roadmap-issue" @key="issue.Id">
+                                <span class="roadmap-issue-identifier"
+                                      @onclick="() => OpenIssue(issue.Identifier)">
+                                    @issue.Identifier
+                                </span>
+                                <IssueStatusMark Status="ParseIssueStatus(issue.Status)" ShowLabel="false" />
+                                <span class="roadmap-issue-title"
+                                      @onclick="() => OpenIssue(issue.Identifier)">@issue.Title</span>
+                                <MudIconButton Icon="@Icons.Material.Rounded.Close"
+                                               Size="Size.Small"
+                                               aria-label="Quitar de la iniciativa"
+                                               Disabled="_busy"
+                                               OnClick="@(() => RemoveIssueAsync(selected, issue))" />
+                            </div>
+                        }
+                    }
+                </MudPaper>
+            }
+        }
+    </MudStack>
+}
+
+@code {
+    private readonly CancellationTokenSource _cancellation = new();
+
+    [Parameter]
+    public string Key { get; set; } = string.Empty;
+
+    [Parameter]
+    public Guid RoadmapId { get; set; }
+
+    private TeamResponse? _team;
+    private RoadmapResponse? _roadmap;
+    private RoadmapTimeline? _timeline;
+    private RoadmapItemResponse? _selected;
+    private IReadOnlyList<IssueSummaryResponse> _issues = [];
+    private Error? _error;
+    private bool _loading = true;
+    private bool _busy;
+
+    private bool CanDelete =>
+        Enum.TryParse<TeamRole>(_team?.Role, out var role) && role >= TeamRole.Admin;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (_roadmap?.Id != RoadmapId || _team?.Key != Key)
+        {
+            await LoadAsync();
+        }
+    }
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        _error = null;
+        StateHasChanged();
+
+        var team = await GetTeam.HandleAsync(Key, _cancellation.Token);
+
+        if (team.IsFailure)
+        {
+            _error = team.Error;
+            _loading = false;
+            StateHasChanged();
+            return;
+        }
+
+        var roadmap = await GetRoadmap.HandleAsync(
+            new GetRoadmapByIdRequest { Key = Key, RoadmapId = RoadmapId },
+            _cancellation.Token);
+
+        if (roadmap.IsFailure)
+        {
+            _error = roadmap.Error;
+            _loading = false;
+            StateHasChanged();
+            return;
+        }
+
+        _team = team.Value;
+        Apply(roadmap.Value);
+
+        _loading = false;
+        StateHasChanged();
+    }
+
+    private void Apply(RoadmapResponse roadmap)
+    {
+        _roadmap = roadmap;
+        _timeline = RoadmapTimeline.Create(roadmap.Items);
+
+        // La selección se rehace contra la versión nueva: si la iniciativa desapareció, el
+        // panel de abajo se cierra en vez de quedar mostrando datos viejos.
+        _selected = _selected is null
+            ? null
+            : roadmap.Items.FirstOrDefault(item => item.Id == _selected.Id);
+    }
+
+    private async Task SelectAsync(RoadmapItemResponse item)
+    {
+        // Volver a tocar la iniciativa abierta la cierra: es la forma esperable de plegar el
+        // panel sin tener que buscar un botón.
+        if (_selected?.Id == item.Id)
+        {
+            _selected = null;
+            _issues = [];
+            StateHasChanged();
+            return;
+        }
+
+        _selected = item;
+        await LoadIssuesAsync();
+        StateHasChanged();
+    }
+
+    /// <summary>
+    /// Los issues de la iniciativa se piden con el filtro del listado de issues, el mismo que
+    /// usa la task 008: no hace falta un camino aparte para la misma pregunta.
+    /// </summary>
+    private async Task LoadIssuesAsync()
+    {
+        if (_selected is not { } item)
+        {
+            _issues = [];
+            return;
+        }
+
+        var result = await ListIssues.HandleAsync(
+            new ListIssuesRequest
+            {
+                Key = Key,
+                RoadmapItem = item.Id.ToString(),
+                PageSize = PageRequest.MaxPageSize
+            },
+            _cancellation.Token);
+
+        _issues = result.IsSuccess ? result.Value.Items : [];
+    }
+
+    private async Task OpenItemDialogAsync(RoadmapItemResponse? item)
+    {
+        var parameters = new DialogParameters<RoadmapItemDialog>
+        {
+            { dialog => dialog.TeamKey, Key },
+            { dialog => dialog.RoadmapId, RoadmapId },
+            { dialog => dialog.Existing, item }
+        };
+
+        var title = item is null ? "Nueva iniciativa" : "Editar iniciativa";
+        var dialog = await DialogService.ShowAsync<RoadmapItemDialog>(title, parameters);
+
+        if (await dialog.Result is { Canceled: false, Data: RoadmapResponse updated })
+        {
+            Apply(updated);
+            await LoadIssuesAsync();
+            StateHasChanged();
+        }
+    }
+
+    private async Task DeleteItemAsync(RoadmapItemResponse item)
+    {
+        var confirmed = await DialogService.ShowMessageBoxAsync(
+            "Eliminar iniciativa",
+            $"Se va a eliminar «{item.Name}». Los issues asociados no se borran, quedan sin iniciativa. Esta acción no se puede deshacer.",
+            yesText: "Eliminar",
+            cancelText: "Cancelar");
+
+        if (confirmed != true)
+        {
+            return;
+        }
+
+        _busy = true;
+        StateHasChanged();
+
+        var result = await DeleteItem.HandleAsync(
+            new DeleteRoadmapItemRequest { Key = Key, RoadmapId = RoadmapId, ItemId = item.Id },
+            _cancellation.Token);
+
+        _busy = false;
+
+        if (result.IsFailure)
+        {
+            Snackbar.Add(result.Error.Description, Severity.Error);
+            StateHasChanged();
+            return;
+        }
+
+        _selected = null;
+        _issues = [];
+        Snackbar.Add("Iniciativa eliminada.", Severity.Success);
+
+        await LoadAsync();
+    }
+
+    private async Task RemoveIssueAsync(RoadmapItemResponse item, IssueSummaryResponse issue)
+    {
+        _busy = true;
+        StateHasChanged();
+
+        var result = await RemoveIssue.HandleAsync(
+            new RemoveRoadmapItemIssueRequest
+            {
+                Key = Key,
+                RoadmapId = RoadmapId,
+                ItemId = item.Id,
+                Identifier = issue.Identifier
+            },
+            _cancellation.Token);
+
+        _busy = false;
+
+        if (result.IsFailure)
+        {
+            Snackbar.Add(result.Error.Description, Severity.Error);
+            StateHasChanged();
+            return;
+        }
+
+        Apply(result.Value);
+        await LoadIssuesAsync();
+
+        Snackbar.Add($"{issue.Identifier} salió de la iniciativa.", Severity.Success);
+        StateHasChanged();
+    }
+
+    private string RowClass(RoadmapItemResponse item) =>
+        _selected?.Id == item.Id ? "timeline-row timeline-row-selected" : "timeline-row";
+
+    private static string BarClass(RoadmapItemStatus status) =>
+        $"timeline-bar timeline-bar-{status.ToString().ToLowerInvariant()}";
+
+    private static string DateRange(RoadmapItemResponse item) =>
+        $"{item.StartDate.ToString("dd/MM/yyyy", CultureInfo.InvariantCulture)} — " +
+        $"{item.TargetDate.ToString("dd/MM/yyyy", CultureInfo.InvariantCulture)}";
+
+    private static string Style(double left, double width) =>
+        $"left: {left.ToString(CultureInfo.InvariantCulture)}%; " +
+        $"width: {width.ToString(CultureInfo.InvariantCulture)}%;";
+
+    private static string Left(double left) =>
+        $"left: {left.ToString(CultureInfo.InvariantCulture)}%;";
+
+    private void OpenIssue(string identifier) =>
+        Navigation.NavigateTo($"/teams/{Key}/issues/{identifier}");
+
+    private static IssueStatus ParseIssueStatus(string status) =>
+        Enum.TryParse<IssueStatus>(status, out var parsed) ? parsed : IssueStatus.Backlog;
+
+    public void Dispose()
+    {
+        _cancellation.Cancel();
+        _cancellation.Dispose();
+    }
+}

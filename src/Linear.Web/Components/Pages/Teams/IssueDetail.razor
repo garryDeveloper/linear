@@ -19,6 +19,11 @@
 @using Linear.Web.Features.Sprints.Contracts
 @using Linear.Web.Features.Sprints.List
 @using Linear.Web.Features.Sprints.RemoveIssue
+@using Linear.Web.Features.Roadmaps.AddIssue
+@using Linear.Web.Features.Roadmaps.Contracts
+@using Linear.Web.Features.Roadmaps.GetById
+@using Linear.Web.Features.Roadmaps.List
+@using Linear.Web.Features.Roadmaps.RemoveIssue
 @using Linear.Web.Features.Teams.Contracts
 @using Linear.Web.Features.Teams.GetByKey
 @using Linear.Web.Shared.Pagination
@@ -37,6 +42,10 @@
 @inject ListSprintsHandler ListSprints
 @inject AddSprintIssueHandler AddToSprint
 @inject RemoveSprintIssueHandler RemoveFromSprint
+@inject ListRoadmapsHandler ListRoadmaps
+@inject GetRoadmapByIdHandler GetRoadmap
+@inject AddRoadmapItemIssueHandler AddToRoadmapItem
+@inject RemoveRoadmapItemIssueHandler RemoveFromRoadmapItem
 @inject IDialogService DialogService
 @inject ISnackbar Snackbar
 @inject NavigationManager Navigation
@@ -103,7 +112,11 @@ else if (_issue is not null)
         <div class="issue-detail-panel">
             <div class="issue-property">
                 <MudText Typo="Typo.caption" Color="Color.Secondary">Estado</MudText>
+                @* ToStringFunc en todos los selectores del panel: sin esto, el campo cerrado
+                   muestra el ToString() del valor —"Done", o directamente un GUID— en lugar
+                   del nombre que se lee en la lista desplegable. *@
                 <MudSelect T="IssueStatus" Value="ParseStatus(_issue.Status)" ValueChanged="OnStatusChanged"
+                           ToStringFunc="@(status => IssueStatusLabel.For(status))"
                            Variant="Variant.Text" Margin="Margin.Dense" Dense="true">
                     @foreach (var status in Enum.GetValues<IssueStatus>())
                     {
@@ -117,6 +130,7 @@ else if (_issue is not null)
             <div class="issue-property">
                 <MudText Typo="Typo.caption" Color="Color.Secondary">Prioridad</MudText>
                 <MudSelect T="IssuePriority" Value="ParsePriority(_issue.Priority)" ValueChanged="OnPriorityChanged"
+                           ToStringFunc="@(priority => IssuePriorityLabel.For(priority))"
                            Variant="Variant.Text" Margin="Margin.Dense" Dense="true">
                     @foreach (var priority in Enum.GetValues<IssuePriority>())
                     {
@@ -130,6 +144,7 @@ else if (_issue is not null)
             <div class="issue-property">
                 <MudText Typo="Typo.caption" Color="Color.Secondary">Responsable</MudText>
                 <MudSelect T="Guid?" Value="_issue.Assignee?.Id" ValueChanged="OnAssigneeChanged"
+                           ToStringFunc="NameOfMember"
                            Variant="Variant.Text" Margin="Margin.Dense" Dense="true" Clearable="true">
                     @foreach (var member in _team!.Members)
                     {
@@ -144,11 +159,30 @@ else if (_issue is not null)
             <div class="issue-property">
                 <MudText Typo="Typo.caption" Color="Color.Secondary">Sprint</MudText>
                 <MudSelect T="Guid?" Value="_issue.Sprint?.Id" ValueChanged="OnSprintChanged"
+                           ToStringFunc="NameOfSprint"
                            Variant="Variant.Text" Margin="Margin.Dense" Dense="true" Clearable="true"
                            Placeholder="Sin asignar">
                     @foreach (var sprint in _assignableSprints)
                     {
                         <MudSelectItem T="Guid?" Value="sprint.Id">@sprint.Name</MudSelectItem>
+                    }
+                </MudSelect>
+            </div>
+
+            @* Iniciativa del roadmap. Se ofrecen las de todos los roadmaps del equipo, con
+               el nombre del roadmap adelante para poder distinguir dos iniciativas que se
+               llamen parecido en roadmaps distintos. *@
+            <div class="issue-property">
+                <MudText Typo="Typo.caption" Color="Color.Secondary">Iniciativa</MudText>
+                <MudSelect T="Guid?" Value="_issue.RoadmapItem?.Id" ValueChanged="OnRoadmapItemChanged"
+                           ToStringFunc="NameOfRoadmapItem"
+                           Variant="Variant.Text" Margin="Margin.Dense" Dense="true" Clearable="true"
+                           Placeholder="Sin iniciativa">
+                    @foreach (var option in _assignableRoadmapItems)
+                    {
+                        <MudSelectItem T="Guid?" Value="option.Item.Id">
+                            @option.RoadmapName / @option.Item.Name
+                        </MudSelectItem>
                     }
                 </MudSelect>
             </div>
@@ -192,6 +226,7 @@ else if (_issue is not null)
     private string? _description;
     private IReadOnlyCollection<Guid> _labelIds = [];
     private IReadOnlyList<SprintSummaryResponse> _assignableSprints = [];
+    private IReadOnlyList<RoadmapItemOption> _assignableRoadmapItems = [];
     private Error? _error;
     private bool _loading = true;
 
@@ -238,6 +273,7 @@ else if (_issue is not null)
         ApplyIssue(issue.Value);
 
         await LoadAssignableSprintsAsync();
+        await LoadAssignableRoadmapItemsAsync();
 
         _loading = false;
         StateHasChanged();
@@ -260,6 +296,125 @@ else if (_issue is not null)
                 sprint.Id == _issue?.Sprint?.Id)
             .ToArray();
     }
+
+    /// <summary>
+    /// Trae las iniciativas de todos los roadmaps del equipo. Son pocas por definición —un
+    /// roadmap agrupa unas decenas—, así que se piden todas de una y se ofrecen juntas.
+    /// </summary>
+    private async Task LoadAssignableRoadmapItemsAsync()
+    {
+        var roadmaps = await ListRoadmaps.HandleAsync(
+            new ListRoadmapsRequest { Key = Key, PageSize = PageRequest.MaxPageSize },
+            _cancellation.Token);
+
+        if (roadmaps.IsFailure)
+        {
+            return;
+        }
+
+        var options = new List<RoadmapItemOption>();
+
+        foreach (var summary in roadmaps.Value.Items.Where(roadmap => roadmap.ItemCount > 0))
+        {
+            var roadmap = await GetRoadmap.HandleAsync(
+                new GetRoadmapByIdRequest { Key = Key, RoadmapId = summary.Id },
+                _cancellation.Token);
+
+            if (roadmap.IsFailure)
+            {
+                continue;
+            }
+
+            options.AddRange(roadmap.Value.Items.Select(
+                item => new RoadmapItemOption(roadmap.Value.Id, roadmap.Value.Name, item)));
+        }
+
+        _assignableRoadmapItems = options;
+    }
+
+    private async Task OnRoadmapItemChanged(Guid? itemId)
+    {
+        var current = _issue!.RoadmapItem;
+
+        if (current?.Id == itemId)
+        {
+            return;
+        }
+
+        // Asociar a otra iniciativa ya reasigna el issue, así que el paso de desasociar solo
+        // hace falta cuando se lo deja sin ninguna.
+        var result = itemId is { } target
+            ? await AddToRoadmapItem.HandleAsync(
+                new AddRoadmapItemIssueRequest
+                {
+                    Key = Key,
+                    RoadmapId = RoadmapIdOf(target),
+                    ItemId = target,
+                    Identifier = Identifier
+                },
+                _cancellation.Token)
+            : await RemoveFromRoadmapItem.HandleAsync(
+                new RemoveRoadmapItemIssueRequest
+                {
+                    Key = Key,
+                    RoadmapId = current!.RoadmapId,
+                    ItemId = current.Id,
+                    Identifier = Identifier
+                },
+                _cancellation.Token);
+
+        if (result.IsFailure)
+        {
+            Snackbar.Add(result.Error.Description, Severity.Error);
+            return;
+        }
+
+        await RefreshIssueAsync();
+    }
+
+    /// <summary>
+    /// Nombres visibles de los valores de cada selector.
+    /// </summary>
+    /// <remarks>
+    /// Si el valor ya no está entre las opciones —un miembro que salió del equipo, una
+    /// iniciativa eliminada— se muestra el valor guardado en el issue en vez de dejar el
+    /// campo en blanco, que se leería como "sin asignar" y sería falso.
+    /// </remarks>
+    private string NameOfMember(Guid? userId) =>
+        userId is not { } id
+            ? string.Empty
+            : _team?.Members.FirstOrDefault(member => member.UserId == id)?.Name
+              ?? _issue?.Assignee?.Name
+              ?? string.Empty;
+
+    private string NameOfSprint(Guid? sprintId) =>
+        sprintId is not { } id
+            ? string.Empty
+            : _assignableSprints.FirstOrDefault(sprint => sprint.Id == id)?.Name
+              ?? _issue?.Sprint?.Name
+              ?? string.Empty;
+
+    private string NameOfRoadmapItem(Guid? itemId)
+    {
+        if (itemId is not { } id)
+        {
+            return string.Empty;
+        }
+
+        var option = _assignableRoadmapItems.FirstOrDefault(candidate => candidate.Item.Id == id);
+
+        if (option is not null)
+        {
+            return $"{option.RoadmapName} / {option.Item.Name}";
+        }
+
+        return _issue?.RoadmapItem is { } current
+            ? $"{current.RoadmapName} / {current.Name}"
+            : string.Empty;
+    }
+
+    private Guid RoadmapIdOf(Guid itemId) =>
+        _assignableRoadmapItems.First(option => option.Item.Id == itemId).RoadmapId;
 
     private async Task OnSprintChanged(Guid? sprintId)
     {
@@ -286,8 +441,18 @@ else if (_issue is not null)
             return;
         }
 
-        // Las operaciones de sprint devuelven el sprint, no el issue: se recarga el issue
-        // para que el panel quede consistente con lo que quedó guardado.
+        await RefreshIssueAsync();
+    }
+
+    /// <summary>
+    /// Vuelve a pedir el issue.
+    /// </summary>
+    /// <remarks>
+    /// Las operaciones de sprint y de roadmap devuelven el sprint o el roadmap, no el issue:
+    /// hay que releerlo para que el panel quede consistente con lo que quedó guardado.
+    /// </remarks>
+    private async Task RefreshIssueAsync()
+    {
         var refreshed = await GetIssue.HandleAsync(
             new GetIssueByIdentifierRequest { Key = Key, Identifier = Identifier },
             _cancellation.Token);
@@ -299,6 +464,12 @@ else if (_issue is not null)
 
         StateHasChanged();
     }
+
+    /// <summary>
+    /// Una iniciativa ofrecida en el selector. Lleva el roadmap que la contiene porque la
+    /// ruta de asociación lo necesita: las iniciativas cuelgan de un roadmap.
+    /// </summary>
+    private sealed record RoadmapItemOption(Guid RoadmapId, string RoadmapName, RoadmapItemResponse Item);
 
     private void ApplyIssue(IssueResponse issue)
     {

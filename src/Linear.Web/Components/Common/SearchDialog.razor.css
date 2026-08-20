@@ -1,0 +1,49 @@
+.search-input {
+    margin: 0;
+}
+
+.search-results {
+    display: flex;
+    flex-direction: column;
+    gap: 0.125rem;
+    max-height: 24rem;
+    min-height: 3rem;
+    overflow-y: auto;
+}
+
+.search-hint {
+    padding: 0.75rem 0.5rem;
+}
+
+.search-result {
+    border-radius: var(--mud-default-borderradius);
+    cursor: pointer;
+    display: flex;
+    flex-direction: column;
+    gap: 0.125rem;
+    padding: 0.4rem 0.5rem;
+}
+
+.search-result-selected {
+    background-color: var(--mud-palette-action-default-hover);
+}
+
+.search-result-head {
+    align-items: center;
+    display: flex;
+    gap: 0.5rem;
+}
+
+.search-result-identifier {
+    color: var(--mud-palette-text-secondary);
+    font-family: ui-monospace, "Cascadia Code", "SF Mono", Consolas, monospace;
+    font-size: 0.6875rem;
+}
+
+.search-result-title {
+    font-size: 0.8125rem;
+    line-height: 1.35;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}

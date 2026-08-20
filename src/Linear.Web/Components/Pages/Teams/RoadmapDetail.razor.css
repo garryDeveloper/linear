@@ -1,0 +1,149 @@
+/* La línea de tiempo es una grilla de dos columnas: las etiquetas a la izquierda y una
+   pista común a la derecha. Todas las filas comparten el mismo eje, así que las barras y
+   las columnas de meses quedan realmente alineadas y no solo parecidas. */
+.timeline {
+    overflow-x: auto;
+    padding: 0.5rem 0;
+}
+
+.timeline-row {
+    align-items: center;
+    display: grid;
+    gap: 0.75rem;
+    grid-template-columns: 14rem minmax(24rem, 1fr);
+    padding: 0.25rem 0.875rem;
+}
+
+.timeline-row:not(.timeline-header) {
+    cursor: pointer;
+    min-height: 2.5rem;
+}
+
+.timeline-row:not(.timeline-header):hover {
+    background-color: var(--mud-palette-action-default-hover);
+}
+
+.timeline-row-selected {
+    background-color: var(--mud-palette-action-default-hover);
+}
+
+.timeline-header {
+    border-bottom: 1px solid var(--mud-palette-lines-default);
+    margin-bottom: 0.25rem;
+    padding-bottom: 0.375rem;
+}
+
+.timeline-label {
+    align-items: center;
+    display: flex;
+    gap: 0.375rem;
+    min-width: 0;
+}
+
+.timeline-item-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.timeline-track {
+    height: 1.5rem;
+    position: relative;
+}
+
+.timeline-month {
+    border-left: 1px solid var(--mud-palette-lines-default);
+    bottom: 0;
+    position: absolute;
+    top: 0;
+}
+
+.timeline-month-label {
+    color: var(--mud-palette-text-secondary);
+    font-size: 0.6875rem;
+    padding-left: 0.25rem;
+    text-transform: uppercase;
+    white-space: nowrap;
+}
+
+/* Las guías de mes se repiten en cada fila para que el ojo pueda seguir una fecha hacia
+   abajo sin perderse. Van muy tenues: son referencia, no contenido. */
+.timeline-gridline {
+    border-left: 1px solid var(--mud-palette-lines-default);
+    bottom: 0;
+    opacity: 0.4;
+    position: absolute;
+    top: 0;
+}
+
+.timeline-bar {
+    align-items: center;
+    border-radius: 999px;
+    display: flex;
+    height: 1.25rem;
+    min-width: 0.5rem;
+    overflow: hidden;
+    position: absolute;
+    top: 0.125rem;
+}
+
+.timeline-bar-planned {
+    background-color: var(--mud-palette-lines-default);
+}
+
+.timeline-bar-inprogress {
+    background-color: var(--mud-palette-primary-lighten);
+}
+
+.timeline-bar-completed {
+    background-color: var(--mud-palette-success-lighten);
+}
+
+.timeline-bar-canceled {
+    background-color: var(--mud-palette-background-gray);
+    opacity: 0.6;
+}
+
+/* Relleno de avance dentro de la barra: la parte hecha de esa iniciativa. */
+.timeline-bar-progress {
+    background-color: var(--mud-palette-primary);
+    bottom: 0;
+    left: 0;
+    opacity: 0.55;
+    position: absolute;
+    top: 0;
+}
+
+.timeline-bar-text {
+    color: var(--mud-palette-text-primary);
+    font-size: 0.6875rem;
+    font-variant-numeric: tabular-nums;
+    padding: 0 0.5rem;
+    position: relative;
+    white-space: nowrap;
+}
+
+.roadmap-issue {
+    align-items: center;
+    border-top: 1px solid var(--mud-palette-lines-default);
+    display: flex;
+    gap: 0.5rem;
+    padding: 0.375rem 0;
+}
+
+.roadmap-issue-identifier {
+    color: var(--mud-palette-text-secondary);
+    cursor: pointer;
+    font-family: ui-monospace, "Cascadia Code", "SF Mono", Consolas, monospace;
+    font-size: 0.6875rem;
+    width: 4.5rem;
+}
+
+.roadmap-issue-title {
+    cursor: pointer;
+    flex: 1 1 auto;
+    font-size: 0.8125rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}

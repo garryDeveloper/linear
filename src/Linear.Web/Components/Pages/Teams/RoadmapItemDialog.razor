@@ -1,0 +1,171 @@
+@using Linear.Domain.Roadmaps
+@using Linear.Web.Features.Roadmaps.Contracts
+@using Linear.Web.Features.Roadmaps.CreateItem
+@using Linear.Web.Features.Roadmaps.UpdateItem
+
+@inject CreateRoadmapItemHandler CreateItem
+@inject UpdateRoadmapItemHandler UpdateItem
+
+<MudDialog>
+    <DialogContent>
+        <MudStack Spacing="3" Style="min-width: 440px;">
+            @if (_error is not null)
+            {
+                <MudAlert Severity="Severity.Error" Dense="true" Variant="Variant.Outlined">
+                    @_error.Description
+                </MudAlert>
+            }
+
+            <MudTextField @bind-Value="_name"
+                          Label="Nombre"
+                          Variant="Variant.Outlined"
+                          Margin="Margin.Dense"
+                          Immediate="true"
+                          MaxLength="@RoadmapItem.MaxNameLength"
+                          Required="true"
+                          AutoFocus="true" />
+
+            <MudTextField @bind-Value="_description"
+                          Label="Descripción"
+                          Variant="Variant.Outlined"
+                          Margin="Margin.Dense"
+                          MaxLength="@RoadmapItem.MaxDescriptionLength"
+                          Lines="3" />
+
+            <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Start">
+                <MudDatePicker @bind-Date="_startDate"
+                               Label="Inicio"
+                               Variant="Variant.Outlined"
+                               Margin="Margin.Dense"
+                               DateFormat="dd/MM/yyyy" />
+                <MudDatePicker @bind-Date="_targetDate"
+                               Label="Objetivo"
+                               Variant="Variant.Outlined"
+                               Margin="Margin.Dense"
+                               DateFormat="dd/MM/yyyy" />
+            </MudStack>
+
+            @* El estado solo se ofrece al editar: una iniciativa nueva nace planificada. *@
+            @if (Existing is not null)
+            {
+                <MudSelect T="RoadmapItemStatus"
+                           @bind-Value="_status"
+                           Label="Estado"
+                           Variant="Variant.Outlined"
+                           Margin="Margin.Dense">
+                    @foreach (var status in Enum.GetValues<RoadmapItemStatus>())
+                    {
+                        <MudSelectItem T="RoadmapItemStatus" Value="status">
+                            @RoadmapItemStatusLabel.For(status)
+                        </MudSelectItem>
+                    }
+                </MudSelect>
+            }
+        </MudStack>
+    </DialogContent>
+    <DialogActions>
+        <MudButton Size="Size.Small" OnClick="Cancel">Cancelar</MudButton>
+        <MudButton Size="Size.Small"
+                   Variant="Variant.Filled"
+                   Color="Color.Primary"
+                   Disabled="_saving"
+                   OnClick="SubmitAsync">
+            @(Existing is null ? "Crear iniciativa" : "Guardar")
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter]
+    private IMudDialogInstance Dialog { get; set; } = default!;
+
+    [Parameter, EditorRequired]
+    public required string TeamKey { get; set; }
+
+    [Parameter, EditorRequired]
+    public required Guid RoadmapId { get; set; }
+
+    /// <summary>Iniciativa a editar, o <c>null</c> para crear una nueva.</summary>
+    [Parameter]
+    public RoadmapItemResponse? Existing { get; set; }
+
+    private string _name = string.Empty;
+    private string? _description;
+    private DateTime? _startDate;
+    private DateTime? _targetDate;
+    private RoadmapItemStatus _status = RoadmapItemStatus.Planned;
+    private Error? _error;
+    private bool _saving;
+
+    protected override void OnInitialized()
+    {
+        if (Existing is { } item)
+        {
+            _name = item.Name;
+            _description = item.Description;
+            _startDate = item.StartDate.ToDateTime(TimeOnly.MinValue);
+            _targetDate = item.TargetDate.ToDateTime(TimeOnly.MinValue);
+            _status = RoadmapItemStatusLabel.Parse(item.Status);
+            return;
+        }
+
+        // Una iniciativa nueva arranca hoy y dura un trimestre: es el horizonte habitual de
+        // un roadmap, y deja las dos fechas listas para aceptar sin tocarlas.
+        var today = DateTime.Today;
+        _startDate = today;
+        _targetDate = today.AddMonths(3);
+    }
+
+    private async Task SubmitAsync()
+    {
+        if (_startDate is not { } start || _targetDate is not { } target)
+        {
+            _error = RoadmapErrors.TargetDateNotAfterStartDate;
+            return;
+        }
+
+        _saving = true;
+        _error = null;
+
+        var startDate = DateOnly.FromDateTime(start);
+        var targetDate = DateOnly.FromDateTime(target);
+
+        var result = Existing is { } existing
+            ? await UpdateItem.HandleAsync(
+                new UpdateRoadmapItemRequest
+                {
+                    Key = TeamKey,
+                    RoadmapId = RoadmapId,
+                    ItemId = existing.Id,
+                    Name = _name,
+                    Description = _description,
+                    StartDate = startDate,
+                    TargetDate = targetDate,
+                    Status = _status
+                },
+                CancellationToken.None)
+            : await CreateItem.HandleAsync(
+                new CreateRoadmapItemRequest
+                {
+                    Key = TeamKey,
+                    RoadmapId = RoadmapId,
+                    Name = _name,
+                    Description = _description,
+                    StartDate = startDate,
+                    TargetDate = targetDate
+                },
+                CancellationToken.None);
+
+        _saving = false;
+
+        if (result.IsFailure)
+        {
+            _error = result.Error;
+            return;
+        }
+
+        Dialog.Close(DialogResult.Ok(result.Value));
+    }
+
+    private void Cancel() => Dialog.Cancel();
+}

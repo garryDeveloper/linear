@@ -30,6 +30,7 @@ public static class IssueFilterOptions
         IssueFilterField.Label => "Label",
         IssueFilterField.Sprint => "Sprint",
         IssueFilterField.CreatedBy => "Creado por",
+        IssueFilterField.RoadmapItem => "Iniciativa",
         IssueFilterField.Title => "Título",
         _ => field.ToString()
     };
@@ -42,6 +43,7 @@ public static class IssueFilterOptions
         IssueFilterField.Label => MudBlazor.Icons.Material.Rounded.Label,
         IssueFilterField.Sprint => MudBlazor.Icons.Material.Rounded.DateRange,
         IssueFilterField.CreatedBy => MudBlazor.Icons.Material.Rounded.PersonAdd,
+        IssueFilterField.RoadmapItem => MudBlazor.Icons.Material.Rounded.Timeline,
         IssueFilterField.Title => MudBlazor.Icons.Material.Rounded.Title,
         _ => MudBlazor.Icons.Material.Rounded.FilterList
     };

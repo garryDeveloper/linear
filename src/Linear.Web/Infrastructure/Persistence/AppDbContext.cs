@@ -3,6 +3,7 @@ using System.Reflection;
 using Linear.Domain.Comments;
 using Linear.Domain.Issues;
 using Linear.Domain.Labels;
+using Linear.Domain.Roadmaps;
 using Linear.Domain.Sprints;
 using Linear.Domain.Teams;
 using Linear.Domain.Users;
@@ -33,6 +34,8 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<Comment> Comments => Set<Comment>();
 
     public DbSet<Sprint> Sprints => Set<Sprint>();
+
+    public DbSet<Roadmap> Roadmaps => Set<Roadmap>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
